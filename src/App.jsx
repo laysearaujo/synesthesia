@@ -190,15 +190,18 @@ function App() {
     }
   }
 
+  // --- FUNÇÃO CORRIGIDA ---
   const handleClear = () => {
     console.log("Botão Limpar clicado.");
     if (worldRef.current) {
-      const allBodies = Matter.World.bodies(worldRef.current)
-      const orbes = allBodies.filter(body => body.label === 'orbe-ritmico')
-      Matter.World.remove(worldRef.current, orbes)
-      console.log(`${orbes.length} orbes removidos.`);
+      // Esta é a função correta:
+      // Ela remove todos os corpos do mundo,
+      // mas o 'true' (keepStatic) mantém as paredes.
+      Matter.World.clear(worldRef.current, true);
+      console.log("Todos os orbes removidos.");
     }
   }
+  // --- FIM DA CORREÇÃO ---
 
   // --- 4. O que será renderizado (JSX) ---
   return (
