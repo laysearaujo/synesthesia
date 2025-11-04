@@ -1,0 +1,88 @@
+/* Reset Básico */
+body, html, #root, .App {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background-color: #121212; /* Fundo escuro "espaço" */
+  color: white;
+}
+
+.App {
+  position: relative; /* Container principal */
+}
+
+/* Onde o canvas da física vai morar */
+#canvas-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1; /* Fica no fundo */
+}
+
+/* O canvas que o Matter.js cria */
+canvas {
+  display: block;
+  background-color: transparent !important; 
+}
+
+/* O menu inferior */
+.toolbox {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(40, 40, 40, 0.8);
+  backdrop-filter: blur(10px);
+  border-radius: 12px;
+  padding: 10px;
+  display: flex;
+  gap: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  z-index: 10; /* Fica na frente */
+}
+
+.toolbox button {
+  background: #333;
+  color: white;
+  border: none;
+  padding: 10px 15px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: background 0.2s;
+}
+
+.toolbox button:hover {
+  background: #444;
+}
+
+/* Tela de 'Clique para Começar' */
+#start-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  z-index: 100; /* Fica acima de tudo */
+  transition: opacity 0.3s;
+}
+
+#start-overlay.hidden {
+  opacity: 0;
+  pointer-events: none; /* Deixa de ser clicável */
+}
