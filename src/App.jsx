@@ -196,7 +196,7 @@ function App() {
 
     try {
       setStatus("processing")
-      const response = await fetch('http://localhost:3001/separate', {
+      const response = await fetch('https://synesthesia-server.onrender.com/separate', {
         method: 'POST',
         body: formData
       })
