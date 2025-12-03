@@ -9,7 +9,7 @@ const players = {}
 const meters = {}
 let availableStems = {}
 
-// --- COMPONENTES VISUAIS (MANTIDOS IGUAIS) ---
+// --- COMPONENTES VISUAIS ---
 
 function DrumsOrb({ status, id, scale: customScale, position }) {
   const meshRef = useRef()
@@ -49,44 +49,99 @@ function DrumsOrb({ status, id, scale: customScale, position }) {
   )
 }
 
+// 2. BAIXO: Tubo Oscilante (Corda Grossa 3D)
 function BassWave({ status, id, scale: customScale, position, playbackRate }) {
   const meshRef = useRef()
-  const args = [8, 0.3, 100, 1] 
+  
+  // Configuração do Tubo:
+  // [RaioTopo, RaioBase, Altura(Comprimento), SegmentsRadial, SegmentsAltura]
+  // Altura 8 = Comprimento da corda
+  // Raio 0.15 = Espessura total de 0.3 (igual a voz)
+  const args = [0.15, 0.15, 8, 12, 64] 
+
+  useEffect(() => {
+    // Truque para animação 3D: Salvar as posições originais dos vértices
+    // para que possamos deformar o tubo sem "amassar" ele para sempre.
+    if (meshRef.current) {
+       const geometry = meshRef.current.geometry
+       // Clona a posição inicial para 'userData' para termos uma referência estática
+       geometry.userData.originalPos = geometry.attributes.position.clone()
+    }
+  }, [])
+
   useFrame((state) => {
-    if (!meshRef.current) return
+    if (!meshRef.current || !meshRef.current.geometry.userData.originalPos) return
+    
     const time = state.clock.getElapsedTime()
     let energy = 0
+    
     if (status === 'playing' && meters[id]) {
       const val = meters[id].getValue()
       energy = Tone.dbToGain(val)
     }
+
     const geometry = meshRef.current.geometry
     const positionAttribute = geometry.attributes.position
+    const originalPos = geometry.userData.originalPos // Lemos do original
+    
     const vertex = new THREE.Vector3()
+
     for (let i = 0; i < positionAttribute.count; i++) {
-      vertex.fromBufferAttribute(positionAttribute, i)
-      const x = vertex.x 
+      // Ler do original (estático)
+      vertex.fromBufferAttribute(originalPos, i)
+      
+      // O Cilindro é criado em pé (eixo Y). Nós o deitamos depois com rotation.
+      // Então aqui, 'y' é o comprimento da corda.
+      const lengthPos = vertex.y 
+      
       const waveSpeed = time * 3 * playbackRate
       const waveFrequency = 1.5
-      const amplitude = 0.2 + (energy * 4 * customScale)
-      const newY = Math.sin(x * waveFrequency + waveSpeed) * amplitude
-      const newZ = Math.cos(x * waveFrequency + waveSpeed) * amplitude * 0.5
+      
+      // Amplitude base + energia do som
+      const amplitude = 0.2 + (energy * 3 * customScale)
+      
+      // Cálculo da Onda Senoidal
+      const waveOffset = Math.sin(lengthPos * waveFrequency + waveSpeed) * amplitude
+
+      // Aplicar a onda no eixo X (que será a altura no mundo real após rotação)
+      // Somamos à posição original para manter a espessura do tubo
+      const currentX = vertex.x + waveOffset
+      const currentZ = vertex.z + (Math.cos(lengthPos * waveFrequency + waveSpeed) * amplitude * 0.3)
+
       if (status !== 'playing') {
-          positionAttribute.setY(i, Math.sin(x + time) * 0.2)
-          positionAttribute.setZ(i, 0)
+          // Movimento suave "Idle"
+          const idleWave = Math.sin(lengthPos + time) * 0.2
+          positionAttribute.setX(i, vertex.x + idleWave)
+          positionAttribute.setZ(i, vertex.z)
       } else {
-          positionAttribute.setY(i, newY)
-          positionAttribute.setZ(i, newZ)
+          // Movimento intenso "Playing"
+          positionAttribute.setX(i, currentX)
+          positionAttribute.setZ(i, currentZ) // Um pouco de movimento lateral também
       }
     }
+    
     positionAttribute.needsUpdate = true
+    
+    // Posicionamento geral
     meshRef.current.position.set(position[0], position[1], position[2])
-    meshRef.current.rotation.z = Math.sin(time * 0.2) * 0.1
+    
+    // Rotação leve do objeto inteiro
+    meshRef.current.rotation.x = Math.sin(time * 0.2) * 0.1
   })
+
   return (
-    <mesh ref={meshRef} position={position}>
-      <planeGeometry args={args} />
-      <meshStandardMaterial color="#4b0082" emissive="#8a2be2" emissiveIntensity={3} side={THREE.DoubleSide} wireframe={true} />
+    <mesh ref={meshRef} position={position} rotation={[0, 0, Math.PI / 2]}> 
+      {/* Rotação Z = 90 graus para deitar o cilindro */}
+      <cylinderGeometry args={args} />
+      {/* Material sólido e brilhante para combinar com os outros */}
+      <meshPhysicalMaterial 
+        color="#4b0082" 
+        emissive="#6a0dad" 
+        emissiveIntensity={2} 
+        roughness={0.2} 
+        metalness={0.8} 
+        clearcoat={1}
+      />
     </mesh>
   )
 }
@@ -108,6 +163,7 @@ function VocalKnot({ status, id, scale: customScale, position, playbackRate }) {
   })
   return (
     <mesh ref={meshRef} position={position}>
+      {/* O segundo argumento (0.25) é a grossura do tubo. O baixo agora tem 0.3, bem próximo. */}
       <torusKnotGeometry args={[1, 0.25, 128, 16]} />
       <meshStandardMaterial color="#00ffff" emissive="#00aaaa" emissiveIntensity={1.2} roughness={0} metalness={1} opacity={0.9} transparent />
     </mesh>
@@ -116,36 +172,74 @@ function VocalKnot({ status, id, scale: customScale, position, playbackRate }) {
 
 function GuitarShards({ status, id, scale: customScale, position, playbackRate }) {
   const groupRef = useRef()
-  const shards = [-1, 0, 1]
+  // 3 "Shards" (Estilhaços) principais
+  const shards = [-1.2, 0, 1.2] 
+
   useFrame((state) => {
     if (status !== 'playing' || !meters[id]) return
-    const energy = Tone.dbToGain(meters[id].getValue())
+
+    // Pegamos a energia do áudio
+    const val = meters[id].getValue()
+    const energy = (val > -100) ? Tone.dbToGain(val) : 0
+    
     if (groupRef.current) {
-       groupRef.current.rotation.y += (0.01 + energy) * playbackRate
-       groupRef.current.rotation.z -= 0.02
-       const expansion = 1 + (energy * 3)
+       // Rotação constante + explosão de velocidade na batida
+       groupRef.current.rotation.x += (0.005 + energy * 0.5) * playbackRate
+       groupRef.current.rotation.y += (0.01 + energy * 0.5) * playbackRate
+       
+       // Expansão: Quando a guitarra toca, os cristais se afastam do centro
+       const expansion = 1 + (energy * 4) // Multiplicador de "explosão"
+
        groupRef.current.children.forEach((child, i) => {
-         const offset = (i - 1) * 1.5 * expansion
-         child.position.x = THREE.MathUtils.lerp(child.position.x, offset, 0.2)
-         child.rotation.x += 0.1 * expansion
-         child.rotation.y += 0.1 * expansion
+         // Posição baseada no índice (-1, 0, 1)
+         // Se afastam horizontalmente
+         const xOffset = (i - 1) * 1.5 
+         
+         // Interpolação suave para a posição de "ataque"
+         child.position.x = THREE.MathUtils.lerp(child.position.x, xOffset * expansion, 0.2)
+         
+         // Eles também sobem/descem aleatoriamente com a energia
+         const noise = Math.sin(state.clock.elapsedTime * 10 + i) 
+         child.position.y = THREE.MathUtils.lerp(child.position.y, noise * energy * 2, 0.2)
+
+         // Rotação individual frenética
+         child.rotation.z += 0.05 + energy
+         
+         // Cor: Fica mais branca/brilhante quando toca forte
+         if (child.material) {
+             const targetIntensity = 1 + (energy * 10) // Brilho intenso
+             child.material.emissiveIntensity = THREE.MathUtils.lerp(child.material.emissiveIntensity, targetIntensity, 0.3)
+         }
        })
+
+       // Escala geral do grupo controlada pelo slider
        const s = customScale
        groupRef.current.scale.lerp(new THREE.Vector3(s, s, s), 0.1)
     }
   })
+
   return (
     <group position={position} ref={groupRef}>
-       {shards.map((i) => (
-         <mesh key={i} position={[i, 0, 0]}>
-           <octahedronGeometry args={[0.7, 0]} />
-           <meshStandardMaterial color="#ff8800" emissive="#ff4400" emissiveIntensity={3} wireframe={true} />
+       {shards.map((i, index) => (
+         <mesh key={index} position={[i, 0, 0]}>
+           {/* Tetrahedron = Pirâmide (Mais agressivo que esfera/cubo) */}
+           <tetrahedronGeometry args={[0.6, 0]} /> 
+           
+           {/* Material Sólido Metálico Incandescente */}
+           <meshPhysicalMaterial 
+             color="#ff5500"       // Laranja Avermelhado
+             emissive="#ff2200"    // Brilha vermelho
+             emissiveIntensity={1} // Brilho base
+             roughness={0.2}       // Meio liso
+             metalness={0.9}       // Bem metálico
+             clearcoat={1}         // Camada de verniz por cima
+             clearcoatRoughness={0.1}
+           />
          </mesh>
        ))}
     </group>
   )
 }
-
 function PianoHelix({ status, id, scale: customScale, position, playbackRate }) {
   const groupRef = useRef()
   const keys = [0, 1, 2, 3, 4]
@@ -196,11 +290,11 @@ const OrbColors = {
 }
 
 const OrbNames = {
-  drums: 'Bateria',
-  bass: 'Baixo',
-  vocals: 'Voz',
-  guitar: 'Guitarra',
-  piano: 'Piano'
+  drums: '🥁',
+  bass: '🔊', 
+  vocals: '🎤',
+  guitar: '🎸',
+  piano: '🎹'
 }
 
 // --- APLICAÇÃO PRINCIPAL ---
@@ -209,8 +303,23 @@ function App() {
   const [status, setStatus] = useState("idle")
   const [orbs, setOrbs] = useState([])
   const [draggedItem, setDraggedItem] = useState(null)
-  const [youtubeUrl, setYoutubeUrl] = useState("") // NOVO STATE
+  const [youtubeUrl, setYoutubeUrl] = useState("") 
+  
+  // NOVO: Estados para Responsividade e UI
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
+  const [showSidebar, setShowSidebar] = useState(!isMobile) // Mobile começa fechado
   const fileInputRef = useRef(null)
+
+  // Listener de redimensionamento
+  useEffect(() => {
+    const handleResize = () => {
+      const mobile = window.innerWidth < 768
+      setIsMobile(mobile)
+      if (!mobile) setShowSidebar(true) // Abre sidebar se voltar pra desktop
+    }
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
 
   // 1. INPUT DE ARQUIVO
   const handleFileButtonClick = async () => {
@@ -221,24 +330,23 @@ function App() {
   // 2. INPUT DO YOUTUBE
   const handleYoutubeSubmit = async () => {
     if (!youtubeUrl) return alert("Por favor, cole um link do YouTube!")
-    
     await Tone.start()
-    setStatus("processing_yt") // Status visual diferente
-    
+    setStatus("downloading") 
+    const progressTimer = setTimeout(() => setStatus("separating"), 10000)
+
     try {
-      // ⚠️ IMPORTANTE: Usando localhost agora
-      const response = await fetch('http://localhost:3001/process-youtube', {
+      const response = await fetch('https://synesthesia-server.onrender.com/process-youtube', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: youtubeUrl })
       })
-      
       const data = await response.json()
+      clearTimeout(progressTimer) 
       processResponseData(data)
-      
     } catch (e) {
       console.error(e)
-      alert("Erro ao conectar com servidor local (Porta 3001).")
+      clearTimeout(progressTimer)
+      alert("Erro ao conectar com servidor.")
       setStatus("idle")
     }
   }
@@ -246,33 +354,27 @@ function App() {
   const handleFileChange = async (event) => {
     const file = event.target.files[0]
     if (!file) return
-    setStatus("uploading")
+    setStatus("processing")
     const formData = new FormData()
     formData.append('audio', file)
-
     try {
-      setStatus("processing")
-      // ⚠️ IMPORTANTE: Usando localhost agora
-      const response = await fetch('http://localhost:3001/separate', {
-        method: 'POST',
-        body: formData
-      })
+      const response = await fetch('https://synesthesia-server.onrender.com/separate', { method: 'POST', body: formData })
       const data = await response.json()
       processResponseData(data)
     } catch (e) {
       console.error(e)
-      alert("Erro de conexão com servidor local.")
+      alert("Erro de conexão com servidor.")
       setStatus("idle")
     }
   }
 
-  // Lógica centralizada para processar os dados da IA
   const processResponseData = async (data) => {
     if (data.success) {
       if (data.isDemo) alert("Modo Demo: Usando áudio de exemplo.")
       availableStems = data.stems
-      
       const initialOrbs = []
+      // Posições ajustadas para caber melhor na tela se for mobile? 
+      // Por enquanto mantemos padrão, mas o zoom da câmera resolve.
       const positions = {
         drums: [0, 0, 0],
         bass: [0, -3.5, 0],
@@ -280,19 +382,13 @@ function App() {
         guitar: [-5, 0, -2],
         piano: [5, 0, -2]
       }
-      
       Object.keys(data.stems).forEach((stem) => {
         if (data.stems[stem]) {
           initialOrbs.push({
-            id: `${stem}-0`,
-            type: stem,
-            scale: 1,
-            position: positions[stem] || [0, 0, 0],
-            playbackRate: 1
+            id: `${stem}-0`, type: stem, scale: 1, position: positions[stem] || [0, 0, 0], playbackRate: 1
           })
         }
       })
-      
       setOrbs(initialOrbs)
       await carregarStems(initialOrbs)
     } else {
@@ -311,24 +407,18 @@ function App() {
        if (!url) return null
        const p = new Tone.Player(url).toDestination()
        const m = new Tone.Meter({ smoothing: 0.8 })
-       p.connect(m)
-       p.loop = true
-       p.autostart = false
+       p.connect(m); p.loop = true; p.autostart = false
        return { p, m }
     }
-
     orbList.forEach(orb => {
       const url = availableStems[orb.type]
       if (url) {
         const track = loadTrack(url)
         if (track) {
-          players[orb.id] = track.p
-          meters[orb.id] = track.m
-          track.p.playbackRate = orb.playbackRate
+          players[orb.id] = track.p; meters[orb.id] = track.m; track.p.playbackRate = orb.playbackRate
         }
       }
     })
-
     try {
       await Tone.loaded()
       const now = Tone.now() + 0.1
@@ -360,8 +450,12 @@ function App() {
   const addOrb = (type) => {
     if (!availableStems[type]) return
     const newId = `${type}-${Date.now()}`
+    // Posição aleatória menor para telas menores
+    const range = isMobile ? 2 : 4
     const newOrb = {
-        id: newId, type, scale: 1, position: [Math.random() * 4 - 2, Math.random() * 4 - 2, 0], playbackRate: 1
+        id: newId, type, scale: 1, 
+        position: [Math.random() * range - (range/2), Math.random() * range - (range/2), 0], 
+        playbackRate: 1
     }
     const newOrbs = [...orbs, newOrb]
     setOrbs(newOrbs)
@@ -392,6 +486,7 @@ function App() {
     const newOrbs = orbs.map(o => { if (o.id === id) return { ...o, position: newPosition }; return o }); setOrbs(newOrbs); updateMix(newOrbs)
   }
   
+  // Drag logic (Desktop)
   const handleDragStart = (e, type) => setDraggedItem(type)
   const handleDragOver = (e) => e.preventDefault()
   const handleOrbDrop = (e) => {
@@ -401,12 +496,16 @@ function App() {
 
   // --- RENDERIZAÇÃO ---
   return (
-    <div style={{ width: "100vw", height: "100vh", background: "#050505", overflow: "hidden" }}>
+    <div style={{ width: "100vw", height: "100vh", background: "#050505", overflow: "hidden", fontFamily: 'sans-serif' }}>
       
-      <Canvas camera={{ position: [0, 0, 14], fov: 45 }} onDrop={handleOrbDrop} onDragOver={handleDragOver}>
+      {/* Canvas com ajuste de FOV para mobile (câmera mais longe se a tela for estreita) */}
+      <Canvas 
+        camera={{ position: [0, 0, isMobile ? 18 : 14], fov: 45 }} 
+        onDrop={handleOrbDrop} 
+        onDragOver={handleDragOver}
+      >
         <ambientLight intensity={0.5} />
         <pointLight position={[10, 10, 10]} intensity={1.5} />
-        
         {orbs.map(orb => {
           const OrbComponent = OrbComponents[orb.type]
           return OrbComponent ? (
@@ -420,141 +519,173 @@ function App() {
       {status !== "playing" && (
         <div style={{
             position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
-            background: 'rgba(0,0,0,0.85)', 
+            background: 'rgba(0,0,0,0.85)', padding: '20px', boxSizing: 'border-box',
             display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center',
             zIndex: 20
           }}>
            {status === "idle" && (
-             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px' }}>
-                <h1 style={{ color: 'white', fontSize: '4rem', margin: 0, letterSpacing: '0.2em', textShadow: '0 0 30px #ff0055' }}>SYNESTHESIA</h1>
-                <p style={{ color: '#aaa', letterSpacing: '2px', marginBottom: '20px' }}>VISUALIZADOR DE STEMS 3D</p>
+             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px', width: '100%', maxWidth: '500px' }}>
+                <h1 style={{ 
+                    color: 'white', fontSize: isMobile ? '2.5rem' : '4rem', margin: 0, 
+                    letterSpacing: '0.2em', textShadow: '0 0 30px #ff0055', textAlign: 'center' 
+                  }}>
+                  SYNESTHESIA
+                </h1>
+                <p style={{ color: '#aaa', letterSpacing: '2px', marginBottom: '20px', textAlign: 'center', fontSize: isMobile ? '0.8rem' : '1rem' }}>
+                  VISUALIZADOR DE STEMS 3D
+                </p>
                 
-                {/* OPÇÃO 1: UPLOAD DE ARQUIVO */}
                 <button onClick={handleFileButtonClick} style={{
-                    padding: '15px 40px', fontSize: '1rem', cursor: 'pointer',
+                    padding: '15px 0', fontSize: '1rem', cursor: 'pointer', width: '100%',
                     background: '#ff0055', color: 'white', border: 'none', borderRadius: '50px',
                     textTransform: 'uppercase', fontWeight: 'bold', boxShadow: '0 0 20px rgba(255, 0, 85, 0.4)',
-                    width: '300px'
                   }}>
-                  📂 Carregar Arquivo MP3
+                  📂 Carregar MP3
                 </button>
 
-                <div style={{ color: '#555' }}>— OU —</div>
+                {/* <div style={{ color: '#555' }}>— OU —</div>
 
-                {/* OPÇÃO 2: YOUTUBE */}
-                <div style={{ display: 'flex', gap: '10px', width: '300px' }}>
-                    <input 
-                        type="text" 
-                        placeholder="Cole link do YouTube..." 
-                        value={youtubeUrl}
-                        onChange={(e) => setYoutubeUrl(e.target.value)}
-                        style={{
-                            flex: 1, padding: '10px 15px', borderRadius: '25px', border: '1px solid #444',
-                            background: 'rgba(255,255,255,0.1)', color: 'white', outline: 'none'
-                        }}
-                    />
-                    <button onClick={handleYoutubeSubmit} style={{
-                        padding: '10px 20px', borderRadius: '25px', border: '1px solid #ff0055',
-                        background: 'transparent', color: '#ff0055', cursor: 'pointer', fontWeight: 'bold'
-                    }}>
-                        GO
-                    </button>
-                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}>
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                        <input 
+                            type="text" 
+                            placeholder="Link do YouTube..." 
+                            value={youtubeUrl}
+                            onChange={(e) => setYoutubeUrl(e.target.value)}
+                            style={{
+                                flex: 1, padding: '12px 15px', borderRadius: '25px', border: '1px solid #444',
+                                background: 'rgba(255,255,255,0.1)', color: 'white', outline: 'none', width: '100%'
+                            }}
+                        />
+                        <button onClick={handleYoutubeSubmit} style={{
+                            padding: '10px 20px', borderRadius: '25px', border: '1px solid #ff0055',
+                            background: 'transparent', color: '#ff0055', cursor: 'pointer', fontWeight: 'bold'
+                        }}>
+                            GO
+                        </button>
+                    </div>
+
+                    <p style={{ color: '#888', fontSize: '0.7rem', margin: 0, textAlign: 'left' }}>
+                    <strong>Dica:</strong> Use o botão "Compartilhar" do vídeo e copie o link curto.
+                    </p>
+                </div> 
+                */}
              </div>
            )}
            
-           {(status === "processing" || status === "processing_yt") && (
-             <div style={{ textAlign: 'center' }}>
-                <h2 style={{ color: '#ff0055', animation: 'pulse 1s infinite' }}>
-                    {status === "processing_yt" ? "BAIXANDO DO YOUTUBE..." : "PROCESSANDO ÁUDIO..."}
+           {(status === "processing" || status === "downloading" || status === "separating") && (
+             <div style={{ textAlign: 'center', padding: '0 20px' }}>
+                <h2 style={{ color: '#ff0055', animation: 'pulse 1s infinite', textTransform: 'uppercase', fontSize: isMobile ? '1.2rem' : '1.5rem' }}>
+                    {status === "downloading" && "BAIXANDO..."}
+                    {status === "separating" && "SEPARANDO FAIXAS..."}
+                    {status === "processing" && "PROCESSANDO..."}
                 </h2>
-                <p style={{ color: '#ccc' }}>
-                    {status === "processing_yt" ? "Isso pode levar alguns segundos..." : "Isolando instrumentos via IA..."}
-                </p>
+                <p style={{ color: '#ccc', fontSize: '0.9rem' }}>Aguarde um momento.</p>
              </div>
            )}
            
-           {status === "loading_audio" && <h2 style={{ color: '#00ff00' }}>CARREGANDO SONS...</h2>}
+           {status === "loading_audio" && <h2 style={{ color: '#00ff00', fontSize: '1.2rem' }}>SINCRONIZANDO...</h2>}
            <input type="file" accept="audio/*" ref={fileInputRef} onChange={handleFileChange} style={{ display: 'none' }} />
         </div>
       )}
 
-      {/* INTERFACE DE JOGO (QUANDO ESTIVER TOCANDO) */}
+      {/* INTERFACE DE JOGO */}
       {status === "playing" && (
         <>
-          {/* Header */}
-          <div style={{ position: 'absolute', top: '20px', left: '20px', zIndex: 10 }}>
-             <h3 style={{ color: 'white', margin: 0, letterSpacing: '2px' }}>SYNESTHESIA</h3>
-             <p style={{ color: '#666', fontSize: '0.8rem', margin: 0 }}>Arraste os ícones para criar novos sons</p>
+          {/* Header Mobile-Friendly */}
+          <div style={{ position: 'absolute', top: '20px', left: '20px', zIndex: 10, pointerEvents: 'none' }}>
+             <h3 style={{ color: 'white', margin: 0, letterSpacing: '2px', fontSize: isMobile ? '1rem' : '1.2rem' }}>SYNESTHESIA</h3>
+             <p style={{ color: '#666', fontSize: '0.7rem', margin: 0 }}>
+               {isMobile ? "Toque nos ícones para adicionar" : "Arraste ou clique nos ícones"}
+             </p>
           </div>
 
-          {/* Docker (Bottom) */}
+          {/* Botão Toggle Sidebar (Só aparece se necessário) */}
+          <button 
+            onClick={() => setShowSidebar(!showSidebar)}
+            style={{
+              position: 'absolute', top: '20px', right: '20px', zIndex: 40,
+              background: 'rgba(20,20,20,0.8)', color: 'white', border: '1px solid #444',
+              borderRadius: '50%', width: '40px', height: '40px', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center'
+            }}
+          >
+            {showSidebar ? '✕' : '⚙️'}
+          </button>
+
+          {/* Docker (Barra Inferior) */}
           <div style={{
             position: 'absolute', bottom: '30px', left: '50%', transform: 'translateX(-50%)',
-            background: 'rgba(20,20,20,0.9)', padding: '15px 25px', borderRadius: '20px',
-            display: 'flex', gap: '20px', zIndex: 30,
-            border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 10px 30px rgba(0,0,0,0.5)'
+            background: 'rgba(20,20,20,0.9)', padding: '10px 20px', borderRadius: '20px',
+            display: 'flex', gap: isMobile ? '15px' : '20px', zIndex: 30,
+            border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
+            maxWidth: '90vw', overflowX: 'auto'
           }}>
             {Object.keys(OrbComponents).map(type => (
               availableStems[type] && (
                 <div
                   key={type}
-                  draggable
+                  draggable={!isMobile} // Só arrasta no desktop
                   onDragStart={(e) => handleDragStart(e, type)}
+                  onClick={() => addOrb(type)} // NOVO: Clique funciona no mobile
                   style={{
-                    width: '50px', height: '50px', borderRadius: '12px',
+                    minWidth: '45px', width: '45px', height: '45px', borderRadius: '12px',
                     background: OrbColors[type], display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    cursor: 'grab', fontSize: '0.6rem', color: 'white', fontWeight: 'bold',
+                    cursor: 'pointer', fontSize: '0.6rem', color: 'white', fontWeight: 'bold',
                     boxShadow: `0 0 10px ${OrbColors[type]}`,
-                    border: '2px solid rgba(255,255,255,0.2)'
+                    border: '2px solid rgba(255,255,255,0.2)',
+                    userSelect: 'none'
                   }}
-                  title={`Arrastar ${OrbNames[type]}`}
                 >
-                  {OrbNames[type].toUpperCase().substring(0, 3)}
+                  {OrbNames[type]}
                 </div>
               )
             ))}
           </div>
 
-          {/* Sidebar (Right) - Controles */}
-          <div style={{
-            position: 'absolute', top: '20px', right: '20px',
-            background: 'rgba(10,10,10,0.8)', padding: '20px', borderRadius: '15px',
-            maxHeight: '85vh', overflowY: 'auto', zIndex: 30, width: '220px',
-            backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.05)'
-          }}>
-            <h4 style={{ color: '#aaa', margin: '0 0 15px 0', fontSize: '0.8rem', textTransform: 'uppercase' }}>Mistura Ativa</h4>
-            {orbs.length === 0 && <p style={{color: '#444', fontSize: '0.8rem'}}>Nenhum instrumento na cena.</p>}
-            
-            {orbs.map(orb => (
-              <div key={orb.id} style={{
-                background: 'rgba(255,255,255,0.03)', padding: '10px', marginBottom: '10px',
-                borderRadius: '8px', borderLeft: `3px solid ${OrbColors[orb.type]}`
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <span style={{ color: 'white', fontSize: '0.8rem', fontWeight: 'bold' }}>{OrbNames[orb.type]}</span>
-                  <button onClick={() => removeOrb(orb.id)} style={{
-                      background: 'transparent', border: 'none', color: '#ff4444', 
-                      cursor: 'pointer', fontSize: '0.9rem'
-                    }}>×</button>
-                </div>
-                
-                <div style={{ marginBottom: '8px' }}>
-                  <label style={{ color: '#666', fontSize: '0.65rem' }}>Escala / Tempo</label>
-                  <input type="range" min="0.5" max="2" step="0.1" value={orb.scale}
-                    onChange={(e) => updateOrbScale(orb.id, parseFloat(e.target.value))}
-                    style={{ width: '100%', accentColor: OrbColors[orb.type] }} />
-                </div>
+          {/* Sidebar (Configurações) */}
+          {showSidebar && (
+            <div style={{
+              position: 'absolute', top: isMobile ? '70px' : '20px', right: '20px',
+              background: 'rgba(10,10,10,0.9)', padding: '20px', borderRadius: '15px',
+              maxHeight: '70vh', overflowY: 'auto', zIndex: 30, 
+              width: isMobile ? '260px' : '220px',
+              backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.1)',
+              boxShadow: '-10px 10px 30px rgba(0,0,0,0.5)'
+            }}>
+              <h4 style={{ color: '#aaa', margin: '0 0 15px 0', fontSize: '0.8rem', textTransform: 'uppercase' }}>Mistura Ativa</h4>
+              {orbs.length === 0 && <p style={{color: '#444', fontSize: '0.8rem'}}>Vazio. Adicione instrumentos.</p>}
+              
+              {orbs.map(orb => (
+                <div key={orb.id} style={{
+                  background: 'rgba(255,255,255,0.03)', padding: '10px', marginBottom: '10px',
+                  borderRadius: '8px', borderLeft: `3px solid ${OrbColors[orb.type]}`
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <span style={{ color: 'white', fontSize: '0.8rem', fontWeight: 'bold' }}>{OrbNames[orb.type]} {orb.type}</span>
+                    <button onClick={() => removeOrb(orb.id)} style={{
+                        background: 'transparent', border: 'none', color: '#ff4444', 
+                        cursor: 'pointer', fontSize: '1.2rem', padding: '0 5px'
+                      }}>×</button>
+                  </div>
+                  
+                  <div style={{ marginBottom: '8px' }}>
+                    <label style={{ color: '#666', fontSize: '0.65rem', display: 'block' }}>Escala / Tempo</label>
+                    <input type="range" min="0.5" max="2" step="0.1" value={orb.scale}
+                      onChange={(e) => updateOrbScale(orb.id, parseFloat(e.target.value))}
+                      style={{ width: '100%', accentColor: OrbColors[orb.type] }} />
+                  </div>
 
-                <div>
-                  <label style={{ color: '#666', fontSize: '0.65rem' }}>Posição X / Pan</label>
-                  <input type="range" min="-6" max="6" step="0.5" value={orb.position[0]}
-                    onChange={(e) => updateOrbPosition(orb.id, [parseFloat(e.target.value), orb.position[1], orb.position[2]])}
-                    style={{ width: '100%', accentColor: OrbColors[orb.type] }} />
+                  <div>
+                    <label style={{ color: '#666', fontSize: '0.65rem', display: 'block' }}>Posição X / Pan</label>
+                    <input type="range" min="-6" max="6" step="0.5" value={orb.position[0]}
+                      onChange={(e) => updateOrbPosition(orb.id, [parseFloat(e.target.value), orb.position[1], orb.position[2]])}
+                      style={{ width: '100%', accentColor: OrbColors[orb.type] }} />
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </>
       )}
     </div>
