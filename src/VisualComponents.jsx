@@ -102,11 +102,12 @@ export function TerrainObject({ status, channel, shapePoints }) {
   })
 
   const brushKey = channel === 'bass' ? 'bass' : (channel === 'drums' ? 'drum' : channel)
+  const coreColor = BRUSHES[brushKey].color
   return (
     <mesh ref={ref} geometry={planeGeom} position={[0, -2, -4]} rotation={[-Math.PI / 2, 0, 0]}>
       <meshStandardMaterial
-        color={BRUSHES[brushKey].color}
-        emissive={BRUSHES[brushKey].color}
+        color={coreColor}
+        emissive={coreColor}
         emissiveIntensity={0.7}
         metalness={0.2}
         roughness={0.8}
@@ -210,7 +211,7 @@ export function CometObject({ status, channel, shapePoints }) {
     }
   })
 
-  const brushKey = channel === 'vocals' ? 'vocal' : 'drum'
+  const brushKey = channel === 'bass' ? 'bass' : (channel === 'drums' ? 'drum' : channel)
   return (
     <group>
       {tubeGeom && <mesh geometry={tubeGeom} position={[-4, 0, -6]}>

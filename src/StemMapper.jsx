@@ -15,6 +15,20 @@ const PRETTY = {
   piano: 'Piano'
 }
 
+const getNewShape = (shape) => {
+  if (shape == "Terrain") {
+    return "Triângulo"
+  } else if (shape == "Cloud") {
+    return "Linhas"
+  } else if (shape == "Orb") {
+    return "Orbe"
+  } else if (shape == "Comet") {
+    return "Cometa"
+  }
+  
+  return shape
+}
+
 export default function StemMapper({ stems = [], mapping = {}, visuals = [], updateMapping }) {
   return (
     <div style={{ position: 'absolute', left: '20px', top: '60px', zIndex: 200, color: 'white' }}>
@@ -26,7 +40,7 @@ export default function StemMapper({ stems = [], mapping = {}, visuals = [], upd
             <select value={mapping[stem] || ''} onChange={(e) => updateMapping(stem, e.target.value)} style={{ padding: '6px 8px', borderRadius: '8px', background: '#111', color: 'white', border: '1px solid #333' }}>
               <option value="">— select —</option>
               {visuals.map(v => (
-                <option value={v} key={v}>{v}</option>
+                <option value={v} key={v}>{getNewShape(v)}</option>
               ))}
             </select>
           </div>
@@ -38,7 +52,7 @@ export default function StemMapper({ stems = [], mapping = {}, visuals = [], upd
           <ul style={{ margin: '6px 0 0 18px', padding: 0 }}>
             {visuals.map(v => (
               <li key={v} style={{ marginBottom: '6px' }}>
-                <strong>{v}</strong>: {v === 'Orb' ? 'esfera pulsante que enfatiza ataques' : v === 'Terrain' ? 'anel/terreno que reage ao baixo' : v === 'Comet' ? 'rastro/movimento para melodia' : 'partículas/atmosfera, reação suave'}
+                <strong>{getNewShape(v)}</strong>: {v === 'Orb' ? 'esfera pulsante que enfatiza ataques' : v === 'Terrain' ? 'triângulo cujo vertices reagem ao baixo' : v === 'Comet' ? 'rastro/movimento para melodia' : 'reação suave, ideal para cordas'}
               </li>
             ))}
           </ul>

@@ -751,6 +751,7 @@ function App() {
         </div>
       )}
 
+      {/* Botões escolher instrumento para desenhar */}
       {status === "playing" && mode === 'draw' && (
         <div style={{
           position: 'absolute', bottom: '315px', left: '50%', transform: 'translateX(-50%)',
