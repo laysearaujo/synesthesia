@@ -12,6 +12,8 @@ const API_URL = (window.location.hostname === 'localhost' || window.location.hos
 // --- GLOBAIS DE ÁUDIO ---
 const players = { drums: null, bass: null, vocals: null, guitar: null, piano: null }
 const meters = { drums: null, bass: null, vocals: null, guitar: null, piano: null }
+const BASE_BPM = 120 // ajuste se souber o BPM real da track
+
 
 // Configuração dos Pincéis
 const BRUSHES = {
@@ -269,6 +271,54 @@ function App() {
 
   const fileInputRef = useRef(null)
   const youtubeInputRef = useRef(null)
+  const recorderRef = useRef(null)
+  const [isRecording, setIsRecording] = useState(false)
+
+  const [canvasEl, setCanvasEl] = useState(null)
+  const videoRecorderRef = useRef(null)
+  const [isVideoRecording, setIsVideoRecording] = useState(false)
+   const [globalBpm, setGlobalBpm] = useState(BASE_BPM)
+
+  const [instrumentRates, setInstrumentRates] = useState({
+    drum: 1,
+    bass: 1,
+    vocal: 1,
+    guitar: 1,
+    piano: 1,
+  })
+
+    const typeToPlayerKey = {
+    drum:  'drums',
+    bass:  'bass',
+    vocal: 'vocals',
+    guitar:'guitar',
+    piano: 'piano',
+  }
+
+    useEffect(() => {
+    const tempoFactor = globalBpm / BASE_BPM // 1.0 = BPM original
+
+    Object.entries(typeToPlayerKey).forEach(([type, playerKey]) => {
+      const player = players[playerKey]
+      if (!player) return
+
+      const localRate = instrumentRates[type] ?? 1
+      // time‑stretch final = fator global * fator do instrumento
+      player.playbackRate = tempoFactor * localRate
+    })
+  }, [globalBpm, instrumentRates])
+
+
+    useEffect(() => {
+    const recorder = new Tone.Recorder()
+    Tone.Destination.connect(recorder)
+    recorderRef.current = recorder
+
+    return () => {
+      Tone.Destination.disconnect(recorder)
+    }
+  }, [])
+
 
   useEffect(() => {
     let interval
@@ -281,6 +331,91 @@ function App() {
   const handleDrawComplete = (points) => {
     setDrawings([...drawings, { id: Date.now(), type: activeBrush, points }])
   }
+    const handleGlobalBpmChange = (value) => {
+    setGlobalBpm(value)
+  }
+
+  const handleInstrumentRateChange = (type, value) => {
+    setInstrumentRates(prev => ({
+      ...prev,
+      [type]: value,
+    }))
+  }
+
+
+    const handleStartRecording = async () => {
+    if (!recorderRef.current) return
+    await Tone.start() // garante AudioContext ativo
+    recorderRef.current.start()
+    setIsRecording(true)
+  }
+
+  const handleStopRecording = async () => {
+    if (!recorderRef.current) return
+    const recording = await recorderRef.current.stop() // Blob de áudio
+    setIsRecording(false)
+
+    const url = URL.createObjectURL(recording)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'synesthesia-mix.webm' // pode trocar para .wav se mudar mimeType
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  }
+
+    const handleStartVideoRecording = async () => {
+    if (!canvasEl) return
+    await Tone.start()
+
+    // vídeo do canvas (60 fps)
+    const videoStream = canvasEl.captureStream(60)
+
+    // áudio global do Tone.js
+    const audioContext = Tone.getContext().rawContext
+    const audioDest = audioContext.createMediaStreamDestination()
+    Tone.Destination.connect(audioDest)
+
+    // junta vídeo + áudio num único MediaStream
+    const mixedStream = new MediaStream([
+      ...videoStream.getVideoTracks(),
+      ...audioDest.stream.getAudioTracks()
+    ])
+
+    const recorder = new MediaRecorder(mixedStream, {
+      mimeType: 'video/webm;codecs=vp9'
+    })
+
+    const chunks = []
+    recorder.ondataavailable = (e) => {
+      if (e.data.size > 0) chunks.push(e.data)
+    }
+
+    recorder.onstop = () => {
+      const blob = new Blob(chunks, { type: 'video/webm' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'synesthesia-visual.webm'
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+      Tone.Destination.disconnect(audioDest)
+    }
+
+    videoRecorderRef.current = recorder
+    recorder.start()
+    setIsVideoRecording(true)
+  }
+
+  const handleStopVideoRecording = () => {
+    if (!videoRecorderRef.current) return
+    videoRecorderRef.current.stop()
+    setIsVideoRecording(false)
+  }
+
 
   // --- FUNÇÃO PARA DELETAR DESENHO ESPECÍFICO ---
   const handleDeleteDrawing = (id) => {
@@ -389,7 +524,10 @@ function App() {
   return (
     <div style={{ width: "100vw", height: "100vh", background: "#050505", cursor: (mode === 'draw' && activeBrush && activeBrush !== 'eraser') ? 'crosshair' : (activeBrush === 'eraser' ? 'alias' : 'auto') }}>
       
-      <Canvas camera={{ position: [0, 0, 15] }}>
+       <Canvas
+        camera={{ position: [0, 0, 15] }}
+        onCreated={({ gl }) => setCanvasEl(gl.domElement)}
+      >
         <color attach="background" args={['#050505']} />
         <ambientLight intensity={0.5} />
         <pointLight position={[10, 10, 10]} intensity={1} />
@@ -444,10 +582,124 @@ function App() {
           </div>
         )}
       </div>
+      {/* Botões de gravação (mix + vídeo) */}
+      {status === 'playing' && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '20px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 110,
+            pointerEvents: 'auto',
+            display: 'flex',
+            gap: '10px',
+          }}
+        >
+          <button
+            onClick={isRecording ? handleStopRecording : handleStartRecording}
+            style={{
+              padding: '8px 16px',
+              borderRadius: '20px',
+              border: '1px solid #ff0055',
+              background: isRecording ? '#ff0055' : 'transparent',
+              color: 'white',
+              fontSize: '0.8rem',
+              textTransform: 'uppercase',
+              cursor: 'pointer',
+              boxShadow: '0 0 10px rgba(255,0,85,0.4)',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {isRecording ? 'Parar e baixar mix' : 'Gravar mix atual'}
+          </button>
+
+          <button
+            onClick={isVideoRecording ? handleStopVideoRecording : handleStartVideoRecording}
+            style={{
+              padding: '8px 16px',
+              borderRadius: '20px',
+              border: '1px solid #0ff',
+              background: isVideoRecording ? '#0ff' : 'transparent',
+              color: 'white',
+              fontSize: '0.8rem',
+              textTransform: 'uppercase',
+              cursor: 'pointer',
+              boxShadow: '0 0 10px rgba(0,255,255,0.4)',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {isVideoRecording ? 'Parar e baixar vídeo' : 'Gravar vídeo & áudio'}
+          </button>
+        </div>
+      )}
 
       {status === "playing" && (
         <MusicPlayer isPlaying={isPlaying} onPlayPause={togglePlay} duration={trackDuration} currentTime={currentTime} onSeek={seekTrack} />
       )}
+            {status === "playing" && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: '200px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: 'rgba(10,10,15,0.9)',
+            padding: '12px 20px',
+            borderRadius: '16px',
+            border: '1px solid rgba(255,255,255,0.1)',
+            color: 'white',
+            fontSize: '0.8rem',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '10px',
+            zIndex: 110,
+            maxWidth: '600px',
+            width: '90%',
+          }}
+        >
+          {/* BPM global */}
+          <div>
+            <div style={{ marginBottom: 4 }}>BPM global: {globalBpm}</div>
+            <input
+              type="range"
+              min="60"
+              max="180"
+              step="1"
+              value={globalBpm}
+              onChange={(e) => handleGlobalBpmChange(parseInt(e.target.value, 10))}
+              style={{ width: '100%' }}
+            />
+          </div>
+
+          {/* Time‑stretch por instrumento */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px' }}>
+            {availableInstruments.map((type) => {
+              const info = BRUSHES[type]
+              const rate = instrumentRates[type]
+              return (
+                <div key={type}>
+                  <div style={{ marginBottom: 2 }}>
+                    {info.icon} {info.name} – fator: {rate.toFixed(2)}x
+                  </div>
+                  <input
+                    type="range"
+                    min="0.5"
+                    max="2"
+                    step="0.05"
+                    value={rate}
+                    onChange={(e) =>
+                      handleInstrumentRateChange(type, parseFloat(e.target.value))
+                    }
+                    style={{ width: '100%', accentColor: info.color }}
+                  />
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
 
       {status === "playing" && mode === 'draw' && (
         <div style={{
