@@ -17,8 +17,8 @@ const PRETTY = {
 
 export default function StemMapper({ stems = [], mapping = {}, visuals = [], updateMapping }) {
   return (
-    <div style={{ position: 'absolute', left: '20px', top: '20px', zIndex: 200, color: 'white' }}>
-      <div style={{ background: 'rgba(0,0,0,0.6)', padding: '10px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.06)' }}>
+    <div style={{ position: 'absolute', left: '20px', top: '60px', zIndex: 200, color: 'white' }}>
+      <div style={{ background: 'rgba(0,0,0,0.6)', padding: '10px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.06)', maxWidth: '250px' }}>
         <h3 style={{ margin: '0 0 8px 0' }}>Visual Mapping</h3>
         {stems.map(stem => (
           <div key={stem} style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '6px' }}>
@@ -31,7 +31,7 @@ export default function StemMapper({ stems = [], mapping = {}, visuals = [], upd
             </select>
           </div>
         ))}
-        <div style={{ fontSize: '0.8rem', opacity: 0.7 }}>Assign which visual responds to each stem. Choosing a visual already used by another stem swaps them.</div>
+        <div style={{ fontSize: '0.8rem', opacity: 0.7 }}>Atribua qual visual corresponde a cada elemento musical. Escolher um visual já usado por outro elemento os troca.</div>
         <hr style={{ border: 'none', height: '1px', background: '#222', margin: '8px 0' }} />
         <div style={{ fontSize: '0.8rem', opacity: 0.9 }}>
           <strong>Visuals (system-defined):</strong>

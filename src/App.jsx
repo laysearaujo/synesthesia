@@ -10,7 +10,7 @@ import { Stage, Layer, Line as KonvaLine } from 'react-konva'
 
 // --- URL DO BACKEND ---
 const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-  ? 'http://localhost:3001' 
+  ? 'http://localhost:3001'
   : 'https://synesthesia-server.onrender.com'
 
 // --- GLOBAIS DE ÁUDIO ---
@@ -19,15 +19,15 @@ const meters = { drums: null, bass: null, vocals: null, guitar: null, piano: nul
 const BASE_BPM = 120 // ajuste se souber o BPM real da track
 
 // link meters to visual components (VisualComponents.jsx exports `visualMeters` object)
-try { Object.assign(visualMeters, meters) } catch(e) { /* ignore in case import not available yet */ }
+try { Object.assign(visualMeters, meters) } catch (e) { /* ignore in case import not available yet */ }
 
 // Configuração dos Pincéis
 const BRUSHES = {
-  drum:   { color: "#ff003c", name: "Bateria", icon: "🥁" }, 
-  bass:   { color: "#8A2BE2", name: "Baixo", icon: "🎸" },   
-  vocal:  { color: "#00f0ff", name: "Voz", icon: "🎤" },     
+  drum: { color: "#ff003c", name: "Bateria", icon: "🥁" },
+  bass: { color: "#8A2BE2", name: "Baixo", icon: "🎸" },
+  vocal: { color: "#00f0ff", name: "Voz", icon: "🎤" },
   guitar: { color: "#ffaa00", name: "Guitarra", icon: "⚡" },
-  piano:  { color: "#39ff14", name: "Piano", icon: "🎹" }    
+  piano: { color: "#39ff14", name: "Piano", icon: "🎹" }
 }
 
 // --- EFEITO DE CÂMERA ---
@@ -36,12 +36,12 @@ function CameraRig({ status }) {
     if (status !== 'playing' || !meters.bass) return
     const val = meters.bass.getValue()
     const energy = (val > -100 && val < 100) ? Tone.dbToGain(val) : 0
-    const targetZ = 15 - (energy * 5) 
+    const targetZ = 15 - (energy * 5)
     state.camera.position.z = THREE.MathUtils.lerp(state.camera.position.z, targetZ, 0.15)
-    if(energy > 0.6) {
-        state.camera.rotation.z = THREE.MathUtils.lerp(state.camera.rotation.z, (Math.random() - 0.5) * 0.02, 0.2)
+    if (energy > 0.6) {
+      state.camera.rotation.z = THREE.MathUtils.lerp(state.camera.rotation.z, (Math.random() - 0.5) * 0.02, 0.2)
     } else {
-        state.camera.rotation.z = THREE.MathUtils.lerp(state.camera.rotation.z, 0, 0.1)
+      state.camera.rotation.z = THREE.MathUtils.lerp(state.camera.rotation.z, 0, 0.1)
     }
   })
   return null
@@ -52,9 +52,9 @@ function DrumObject({ status, channel = 'drums' }) {
   const mesh = useRef()
   useFrame(() => {
     const meter = meters[channel]
-    if(!meter) return
+    if (!meter) return
     const energy = status === 'playing' ? Tone.dbToGain(meter.getValue()) : 0
-    const scale = 1.5 + (energy * 4) 
+    const scale = 1.5 + (energy * 4)
     mesh.current.scale.lerp(new THREE.Vector3(scale, scale, scale), 0.4)
     mesh.current.material.emissiveIntensity = 1 + (energy * 10)
     mesh.current.material.distort = 0.3 + (energy * 2)
@@ -71,7 +71,7 @@ function BassObject({ status, channel = 'bass' }) {
   const mesh = useRef()
   useFrame(() => {
     const meter = meters[channel]
-    if(!meter) return
+    if (!meter) return
     const energy = status === 'playing' ? Tone.dbToGain(meter.getValue()) : 0
     mesh.current.rotation.x += 0.01 + (energy * 0.1)
     mesh.current.scale.setScalar(2 + (energy * 2))
@@ -89,7 +89,7 @@ function VocalObject({ status, channel = 'vocals' }) {
   const mesh = useRef()
   useFrame((state) => {
     const meter = meters[channel]
-    if(!meter) return
+    if (!meter) return
     const t = state.clock.getElapsedTime()
     const energy = status === 'playing' ? Tone.dbToGain(meter.getValue()) : 0
     mesh.current.position.y = 3 + Math.sin(t) * 0.5
@@ -110,7 +110,7 @@ function GuitarObject({ status, channel = 'guitar' }) {
   const mesh = useRef()
   useFrame(() => {
     const meter = meters[channel]
-    if(!meter) return
+    if (!meter) return
     const energy = status === 'playing' ? Tone.dbToGain(meter.getValue()) : 0
     mesh.current.rotation.z -= 0.02 + energy
     mesh.current.scale.setScalar(0.8 + (energy * 4))
@@ -118,7 +118,7 @@ function GuitarObject({ status, channel = 'guitar' }) {
   const brushKey = channel === 'drums' ? 'drum' : (channel === 'vocals' ? 'vocal' : channel)
   return (
     <Octahedron ref={mesh} args={[1, 0]} position={[-4, 0, -2]}>
-       <meshStandardMaterial color={BRUSHES[brushKey].color} emissive={BRUSHES[brushKey].color} emissiveIntensity={4} wireframe />
+      <meshStandardMaterial color={BRUSHES[brushKey].color} emissive={BRUSHES[brushKey].color} emissiveIntensity={4} wireframe />
     </Octahedron>
   )
 }
@@ -127,23 +127,23 @@ function PianoObject({ status, channel = 'piano' }) {
   const group = useRef()
   useFrame((state) => {
     const meter = meters[channel]
-    if(!meter) return
+    if (!meter) return
     const energy = status === 'playing' ? Tone.dbToGain(meter.getValue()) : 0
     const t = state.clock.getElapsedTime()
     group.current.position.y = Math.sin(t * 2)
     group.current.children.forEach((child, i) => {
-        child.scale.y = 1 + (energy * 5 * (i+1))
+      child.scale.y = 1 + (energy * 5 * (i + 1))
     })
   })
   const brushKey = channel === 'drums' ? 'drum' : (channel === 'vocals' ? 'vocal' : channel)
   return (
     <group ref={group} position={[4, 0, -2]}>
-        <Box args={[0.5, 1, 0.5]} position={[-0.5, 0, 0]}>
-            <meshStandardMaterial color={BRUSHES[brushKey].color} emissive={BRUSHES[brushKey].color} emissiveIntensity={2} />
-        </Box>
-        <Box args={[0.5, 1, 0.5]} position={[0.5, 0, 0]}>
-            <meshStandardMaterial color={BRUSHES[brushKey].color} emissive={BRUSHES[brushKey].color} emissiveIntensity={2} />
-        </Box>
+      <Box args={[0.5, 1, 0.5]} position={[-0.5, 0, 0]}>
+        <meshStandardMaterial color={BRUSHES[brushKey].color} emissive={BRUSHES[brushKey].color} emissiveIntensity={2} />
+      </Box>
+      <Box args={[0.5, 1, 0.5]} position={[0.5, 0, 0]}>
+        <meshStandardMaterial color={BRUSHES[brushKey].color} emissive={BRUSHES[brushKey].color} emissiveIntensity={2} />
+      </Box>
     </group>
   )
 }
@@ -248,7 +248,7 @@ function MusicPlayer({ isPlaying, onPlayPause, duration, currentTime, onSeek }) 
 
   return (
     <div style={{
-      position: 'absolute', bottom: '120px', left: '50%', transform: 'translateX(-50%)',
+      position: 'absolute', bottom: '20px', left: '50%', transform: 'translateX(-50%)',
       width: '90%', maxWidth: '600px',
       background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(10px)',
       padding: '10px 20px', borderRadius: '15px', border: '1px solid rgba(255,255,255,0.1)',
@@ -266,10 +266,10 @@ function MusicPlayer({ isPlaying, onPlayPause, duration, currentTime, onSeek }) 
 
 function App() {
   const [status, setStatus] = useState("idle")
-  const [drawings, setDrawings] = useState([]) 
-  const [mode, setMode] = useState('draw') 
-  
-  const [activeBrush, setActiveBrush] = useState(null) 
+  const [drawings, setDrawings] = useState([])
+  const [mode, setMode] = useState('draw')
+
+  const [activeBrush, setActiveBrush] = useState(null)
   const [isDrawing, setIsDrawing] = useState(false)
   const [availableInstruments, setAvailableInstruments] = useState(['drum', 'bass', 'vocal', 'guitar', 'piano'])
 
@@ -283,13 +283,13 @@ function App() {
     piano: 'Cloud'
   }
   const [visualMapping, setVisualMapping] = useState(defaultMapping)
-  
+
   // Default shapes - fixed and persistent
   const DEFAULT_SHAPES = {
-    Orb: [[-1,-1,0], [-0.5,-1.2,0], [0,-1,0], [0.5,-1.2,0], [1,-1,0], [1.2,-0.5,0], [1.2,0,0], [1.2,0.5,0], [1,1,0], [0.5,1.2,0], [0,-1,0], [-0.5,1.2,0], [-1,1,0], [-1.2,0.5,0], [-1.2,0,0], [-1.2,-0.5,0]],
-    Terrain: [[-2,-0.5,0], [-1.5,-0.3,0], [-1,-0.4,0], [-0.5,-0.2,0], [0,0,0], [0.5,-0.2,0], [1,-0.4,0], [1.5,-0.3,0], [2,-0.5,0], [2,0.5,0], [0,0.5,0], [-2,0.5,0]],
-    Comet: [[-2,-0.3,0], [-1.5,-0.5,0], [-1,-0.4,0], [-0.5,-0.6,0], [0,-0.5,0], [0.5,-0.6,0], [1,-0.4,0], [1.5,-0.5,0], [2,-0.3,0]],
-    Cloud: [[-1.5,-0.5,0], [-1,-0.8,0], [-0.5,-0.7,0], [0,-0.9,0], [0.5,-0.7,0], [1,-0.8,0], [1.5,-0.5,0], [0.8,0.3,0], [0,0.5,0], [-0.8,0.3,0]]
+    Orb: [[-1, -1, 0], [-0.5, -1.2, 0], [0, -1, 0], [0.5, -1.2, 0], [1, -1, 0], [1.2, -0.5, 0], [1.2, 0, 0], [1.2, 0.5, 0], [1, 1, 0], [0.5, 1.2, 0], [0, -1, 0], [-0.5, 1.2, 0], [-1, 1, 0], [-1.2, 0.5, 0], [-1.2, 0, 0], [-1.2, -0.5, 0]],
+    Terrain: [[-2, -0.5, 0], [-1.5, -0.3, 0], [-1, -0.4, 0], [-0.5, -0.2, 0], [0, 0, 0], [0.5, -0.2, 0], [1, -0.4, 0], [1.5, -0.3, 0], [2, -0.5, 0], [2, 0.5, 0], [0, 0.5, 0], [-2, 0.5, 0]],
+    Comet: [[-2, -0.3, 0], [-1.5, -0.5, 0], [-1, -0.4, 0], [-0.5, -0.6, 0], [0, -0.5, 0], [0.5, -0.6, 0], [1, -0.4, 0], [1.5, -0.5, 0], [2, -0.3, 0]],
+    Cloud: [[-1.5, -0.5, 0], [-1, -0.8, 0], [-0.5, -0.7, 0], [0, -0.9, 0], [0.5, -0.7, 0], [1, -0.8, 0], [1.5, -0.5, 0], [0.8, 0.3, 0], [0, 0.5, 0], [-0.8, 0.3, 0]]
   }
   const [visualShapes, setVisualShapes] = useState(DEFAULT_SHAPES)
 
@@ -358,7 +358,7 @@ function App() {
     return () => { mounted = false }
   }, [])
 
-  
+
   const saveVisualShape = (visualId, points) => {
     // Save shape locally and to backend
     setVisualShapes(prev => ({ ...prev, [visualId]: points }))
@@ -382,7 +382,7 @@ function App() {
   const [canvasEl, setCanvasEl] = useState(null)
   const videoRecorderRef = useRef(null)
   const [isVideoRecording, setIsVideoRecording] = useState(false)
-   const [globalBpm, setGlobalBpm] = useState(BASE_BPM)
+  const [globalBpm, setGlobalBpm] = useState(BASE_BPM)
 
   const [instrumentRates, setInstrumentRates] = useState({
     drum: 1,
@@ -392,15 +392,15 @@ function App() {
     piano: 1,
   })
 
-    const typeToPlayerKey = {
-    drum:  'drums',
-    bass:  'bass',
+  const typeToPlayerKey = {
+    drum: 'drums',
+    bass: 'bass',
     vocal: 'vocals',
-    guitar:'guitar',
+    guitar: 'guitar',
     piano: 'piano',
   }
 
-    useEffect(() => {
+  useEffect(() => {
     const tempoFactor = globalBpm / BASE_BPM // 1.0 = BPM original
 
     Object.entries(typeToPlayerKey).forEach(([type, playerKey]) => {
@@ -414,7 +414,7 @@ function App() {
   }, [globalBpm, instrumentRates])
 
 
-    useEffect(() => {
+  useEffect(() => {
     const recorder = new Tone.Recorder()
     Tone.Destination.connect(recorder)
     recorderRef.current = recorder
@@ -436,7 +436,7 @@ function App() {
   const handleDrawComplete = (points) => {
     setDrawings([...drawings, { id: Date.now(), type: activeBrush, points }])
   }
-    const handleGlobalBpmChange = (value) => {
+  const handleGlobalBpmChange = (value) => {
     setGlobalBpm(value)
   }
 
@@ -448,7 +448,7 @@ function App() {
   }
 
 
-    const handleStartRecording = async () => {
+  const handleStartRecording = async () => {
     if (!recorderRef.current) return
     await Tone.start() // garante AudioContext ativo
     recorderRef.current.start()
@@ -470,7 +470,7 @@ function App() {
     URL.revokeObjectURL(url)
   }
 
-    const handleStartVideoRecording = async () => {
+  const handleStartVideoRecording = async () => {
     if (!canvasEl) return
     await Tone.start()
 
@@ -562,10 +562,10 @@ function App() {
 
       const response = await fetch(`${API_URL}/${endpoint}`, { method: 'POST', headers, body })
       const data = await response.json()
-      
+
       if (data.success) {
-        if(data.isDemo) alert("⚠️ Modo Demo (API Falhou)")
-        if(data.cached) console.log("⚡ Cache Hit!")
+        if (data.isDemo) alert("⚠️ Modo Demo (API Falhou)")
+        if (data.cached) console.log("⚡ Cache Hit!")
         await carregarStems(data.stems)
       } else {
         alert("Erro: " + (data.error || "Desconhecido"))
@@ -581,37 +581,37 @@ function App() {
     setStatus("loading_audio")
     await Tone.start()
     Tone.Transport.stop(); Tone.Transport.cancel()
-    
+
     Object.values(players).forEach(p => p && p.dispose())
     Object.values(meters).forEach(m => m && m.dispose())
 
     const validInsts = []
 
     const load = (url, type) => {
-       if (!url) return { p: null, m: null }
-       validInsts.push(type) 
-       const p = new Tone.Player(url).toDestination()
-       p.sync().start(0) 
-       const m = new Tone.Meter({ smoothing: 0.8 })
-       p.connect(m)
-       return { p, m }
+      if (!url) return { p: null, m: null }
+      validInsts.push(type)
+      const p = new Tone.Player(url).toDestination()
+      p.sync().start(0)
+      const m = new Tone.Meter({ smoothing: 0.8 })
+      p.connect(m)
+      return { p, m }
     }
 
-    const t = { 
-      drums: load(urls.drums, 'drums'), 
-      bass: load(urls.bass, 'bass'), 
-      vocals: load(urls.vocals, 'vocals'), 
-      guitar: load(urls.guitar, 'guitar'), 
-      piano: load(urls.piano, 'piano') 
+    const t = {
+      drums: load(urls.drums, 'drums'),
+      bass: load(urls.bass, 'bass'),
+      vocals: load(urls.vocals, 'vocals'),
+      guitar: load(urls.guitar, 'guitar'),
+      piano: load(urls.piano, 'piano')
     }
-    
+
     setAvailableInstruments(validInsts)
 
     for (const k in t) { players[k] = t[k].p; meters[k] = t[k].m }
     // Expose meters to VisualComponents
     Object.assign(visualMeters, meters)
     // Also expose for Konva overlay
-    try { window.visualMeters = visualMeters } catch(e) {}
+    try { window.visualMeters = visualMeters } catch (e) { }
 
     try {
       await Tone.loaded()
@@ -621,7 +621,7 @@ function App() {
       Tone.Transport.start()
       setIsPlaying(true)
       setStatus("playing")
-      if (validInsts.includes('drum')) setActiveBrush('drum') 
+      if (validInsts.includes('drum')) setActiveBrush('drum')
       else if (validInsts.length > 0) setActiveBrush(validInsts[0])
     } catch (e) {
       console.error(e)
@@ -632,27 +632,27 @@ function App() {
 
   return (
     <div style={{ width: "100vw", height: "100vh", background: "#050505", cursor: (mode === 'draw' && activeBrush && activeBrush !== 'eraser') ? 'crosshair' : (activeBrush === 'eraser' ? 'alias' : 'auto') }}>
-      
-        {/* Use Konva overlay for scene rendering (fallback to 2D canvas) */}
-        {mode === 'scene' ? (
-          <KonvaVisuals visualMapping={visualMapping} visualShapes={visualShapes} availableInstruments={availableInstruments} status={status} />
-        ) : (
-          <Canvas camera={{ position: [0, 0, 15] }}>
-            <color attach="background" args={['#050505']} />
-        <ambientLight intensity={0.5} />
-        <pointLight position={[10, 10, 10]} intensity={1} />
-        <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade speed={1} />
-        <Sparkles count={500} scale={20} size={2} speed={0.4} opacity={0.5} color="#00f0ff" />
 
-        <CameraRig status={status} />
+      {/* Use Konva overlay for scene rendering (fallback to 2D canvas) */}
+      {mode === 'scene' ? (
+        <KonvaVisuals visualMapping={visualMapping} visualShapes={visualShapes} availableInstruments={availableInstruments} status={status} />
+      ) : (
+        <Canvas camera={{ position: [0, 0, 15] }}>
+          <color attach="background" args={['#050505']} />
+          <ambientLight intensity={0.5} />
+          <pointLight position={[10, 10, 10]} intensity={1} />
+          <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade speed={1} />
+          <Sparkles count={500} scale={20} size={2} speed={0.4} opacity={0.5} color="#00f0ff" />
 
-        {mode === 'scene' && (
-          <>
-            {/* Render scene objects based on dynamic visualMapping */}
-            {Object.entries(visualMapping).map(([stem, visual]) => {
-              // only render if this channel/instrument is available
-              if (!availableInstruments.includes(stem)) return null
-              const key = stem + '-' + visual
+          <CameraRig status={status} />
+
+          {mode === 'scene' && (
+            <>
+              {/* Render scene objects based on dynamic visualMapping */}
+              {Object.entries(visualMapping).map(([stem, visual]) => {
+                // only render if this channel/instrument is available
+                if (!availableInstruments.includes(stem)) return null
+                const key = stem + '-' + visual
                 switch (visual) {
                   case 'Orb':
                     return <OrbObject key={key} status={status} channel={stem} shapePoints={visualShapes['Orb']} />
@@ -665,13 +665,13 @@ function App() {
                   default:
                     return null
                 }
-            })}
-          </>
-        )}
+              })}
+            </>
+          )}
 
-        <OrbitControls enabled={!isDrawing && !(mode==='draw' && activeBrush && activeBrush !== 'eraser')} makeDefault />
-          </Canvas>
-        )}
+          <OrbitControls enabled={!isDrawing && !(mode === 'draw' && activeBrush && activeBrush !== 'eraser')} makeDefault />
+        </Canvas>
+      )}
 
       {status === 'playing' && mode === 'draw' && (
         <KonvaDrawingBoard
@@ -751,6 +751,61 @@ function App() {
         </div>
       )}
 
+      {status === "playing" && mode === 'draw' && (
+        <div style={{
+          position: 'absolute', bottom: '315px', left: '50%', transform: 'translateX(-50%)',
+          background: 'rgba(20, 20, 30, 0.9)', backdropFilter: 'blur(12px)',
+          padding: '10px 20px', borderRadius: '25px', border: '1px solid rgba(255,255,255,0.1)',
+          display: 'flex', gap: '15px', zIndex: 100, boxShadow: '0 10px 40px rgba(0,0,0,0.6)'
+        }}>
+          {availableInstruments.map(key => {
+            const instrumentToBrush = { drums: 'drum', vocals: 'vocal', bass: 'bass', guitar: 'guitar', piano: 'piano' }
+            const brushKey = instrumentToBrush[key] || key
+            const info = BRUSHES[brushKey] || { color: '#999', name: key, icon: '🎵' }
+            return (
+              <button
+                key={key}
+                onClick={() => setActiveBrush(activeBrush === brushKey ? null : brushKey)}
+                style={{
+                  background: activeBrush === brushKey ? info.color : 'transparent',
+                  color: 'white', border: `2px solid ${info.color}`,
+                  width: '50px', height: '50px', borderRadius: '15px', cursor: 'pointer',
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                  boxShadow: activeBrush === brushKey ? `0 0 25px ${info.color}` : 'none',
+                  transform: activeBrush === brushKey ? 'translateY(-10px) scale(1.1)' : 'none',
+                  transition: 'all 0.2s'
+                }}
+                title={info.name}
+              >
+                <span style={{ fontSize: '24px' }}>{info.icon}</span>
+              </button>
+            )
+          })}
+
+          <div style={{ width: '1px', background: 'white', margin: '0 5px', opacity: 0.3 }}></div>
+
+          {/* Botão BORRACHA (Para apagar um por um) */}
+          <button
+            onClick={() => setActiveBrush(activeBrush === 'eraser' ? null : 'eraser')}
+            style={{
+              background: activeBrush === 'eraser' ? '#ff4444' : 'transparent',
+              border: '2px solid #ff4444', borderRadius: '15px', width: '50px', height: '50px',
+              fontSize: '24px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              transform: activeBrush === 'eraser' ? 'translateY(-10px) scale(1.1)' : 'none',
+              transition: 'all 0.2s'
+            }}
+            title="Borracha (Clique para apagar)"
+          >
+            🧽
+          </button>
+
+          {/* Botão LIMPAR TUDO */}
+          <button onClick={() => setDrawings([])} style={{ background: 'transparent', border: 'none', fontSize: '24px', cursor: 'pointer', opacity: 0.7 }} title="Limpar Tudo">
+            🗑️
+          </button>
+        </div>
+      )}
+
       {status === 'playing' && (
         <StemMapper stems={availableInstruments} mapping={visualMapping} visuals={VISUAL_OBJECTS} updateMapping={updateMapping} />
       )}
@@ -758,11 +813,11 @@ function App() {
       {status === "playing" && (
         <MusicPlayer isPlaying={isPlaying} onPlayPause={togglePlay} duration={trackDuration} currentTime={currentTime} onSeek={seekTrack} />
       )}
-            {status === "playing" && (
+      {status === "playing" && (
         <div
           style={{
             position: 'absolute',
-            bottom: '200px',
+            bottom: '90px',
             left: '50%',
             transform: 'translateX(-50%)',
             background: 'rgba(10,10,15,0.9)',
@@ -821,107 +876,41 @@ function App() {
         </div>
       )}
 
-
-      {status === "playing" && mode === 'draw' && (
-        <div style={{
-          position: 'absolute', bottom: '20px', left: '50%', transform: 'translateX(-50%)',
-          background: 'rgba(20, 20, 30, 0.9)', backdropFilter: 'blur(12px)',
-          padding: '10px 20px', borderRadius: '25px', border: '1px solid rgba(255,255,255,0.1)',
-          display: 'flex', gap: '15px', zIndex: 100, boxShadow: '0 10px 40px rgba(0,0,0,0.6)'
-        }}>
-          {availableInstruments.map(key => {
-            const instrumentToBrush = { drums: 'drum', vocals: 'vocal', bass: 'bass', guitar: 'guitar', piano: 'piano' }
-            const brushKey = instrumentToBrush[key] || key
-            const info = BRUSHES[brushKey] || { color: '#999', name: key, icon: '🎵' }
-             return (
-               <button 
-                 key={key}
-                 onClick={() => setActiveBrush(activeBrush === brushKey ? null : brushKey)}
-                style={{
-                  background: activeBrush === brushKey ? info.color : 'transparent',
-                  color: 'white', border: `2px solid ${info.color}`,
-                  width: '50px', height: '50px', borderRadius: '15px', cursor: 'pointer',
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                  boxShadow: activeBrush === brushKey ? `0 0 25px ${info.color}` : 'none',
-                  transform: activeBrush === brushKey ? 'translateY(-10px) scale(1.1)' : 'none',
-                  transition: 'all 0.2s'
-                }}
-                title={info.name}
-              >
-                <span style={{fontSize: '24px'}}>{info.icon}</span>
-              </button>
-            )
-          })}
-          
-          <div style={{ width: '1px', background: 'white', margin: '0 5px', opacity: 0.3 }}></div>
-          
-          {/* Botão BORRACHA (Para apagar um por um) */}
-          <button 
-            onClick={() => setActiveBrush(activeBrush === 'eraser' ? null : 'eraser')} 
-            style={{ 
-              background: activeBrush === 'eraser' ? '#ff4444' : 'transparent', 
-              border: '2px solid #ff4444', borderRadius: '15px', width: '50px', height: '50px', 
-              fontSize:'24px', cursor:'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              transform: activeBrush === 'eraser' ? 'translateY(-10px) scale(1.1)' : 'none',
-              transition: 'all 0.2s'
-            }} 
-            title="Borracha (Clique para apagar)"
-          >
-            🧽
-          </button>
-
-          {/* Botão LIMPAR TUDO */}
-          <button onClick={() => setDrawings([])} style={{ background:'transparent', border:'none', fontSize:'24px', cursor:'pointer', opacity: 0.7 }} title="Limpar Tudo">
-            🗑️
-          </button>
-        </div>
-      )}
-
       {status !== "playing" && (
         <div style={{
-            position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
-            background: 'radial-gradient(circle at center, rgba(20,20,20,0.9) 0%, rgba(0,0,0,1) 100%)', 
-            display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', zIndex: 20
-          }}>
-           {status === "idle" && (
-             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '25px', width: '90%', maxWidth: '450px' }}>
-                <h1 style={{ color: 'white', fontSize: '3.5rem', margin: 0, textShadow: '0 0 40px rgba(255, 0, 85, 0.6)', textAlign: 'center', letterSpacing: '4px' }}>SYNESTHESIA</h1>
-                <p style={{ color: '#00f0ff', letterSpacing: '3px', marginBottom: '30px', fontWeight: 'bold' }}>PAINT THE SOUND</p>
-                <button onClick={() => fileInputRef.current.click()} style={{
-                    width: '100%', padding: '18px', fontSize: '1.1rem', cursor: 'pointer',
-                    background: 'linear-gradient(90deg, #ff0055 0%, #ff8800 100%)', color: 'white', 
-                    border: 'none', borderRadius: '12px', textTransform: 'uppercase', fontWeight: 'bold', letterSpacing: '1px',
-                    boxShadow: '0 10px 30px rgba(255, 0, 85, 0.3)', transition: 'transform 0.2s'
-                  }} onMouseOver={e => e.target.style.transform = 'scale(1.02)'} onMouseOut={e => e.target.style.transform = 'scale(1)'}>
-                  📁 Upload MP3
-                </button>
-                <div style={{color: '#444', fontSize: '0.8rem'}}>OU COLE UM LINK DO YOUTUBE</div>
-                <div style={{ display: 'flex', width: '100%', gap: '10px' }}>
-                  <input ref={youtubeInputRef} placeholder="https://youtube.com/watch?v=..." style={{ flex: 1, padding: '15px', borderRadius: '12px', border: '1px solid #333', background: '#111', color: 'white', outline: 'none', fontFamily: 'monospace' }} />
-                  <button onClick={handleYoutubeUpload} style={{ padding: '0 25px', cursor: 'pointer', background: '#333', color: 'white', border: '1px solid #444', borderRadius: '12px', fontWeight: 'bold', transition: 'background 0.2s' }}>▶</button>
-                </div>
-             </div>
-           )}
-           {(status === "processing" || status === "uploading") && (
-             <div style={{textAlign: 'center'}}>
-               <div style={{ width: '50px', height: '50px', border: '4px solid #ff0055', borderTop: '4px solid transparent', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 20px' }}></div>
-               <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
-               <h2 style={{color:'white', letterSpacing: '1px'}}>PROCESSANDO ÁUDIO...</h2>
-               <p style={{color:'#666', fontSize: '0.9rem'}}>A IA está separando os instrumentos...</p>
-             </div>
-           )}
-           {status === "loading_audio" && <h2 style={{color:'#00ff00', textShadow: '0 0 20px #00ff00'}}>BAIXANDO STEMS... ⏳</h2>}
-           <input type="file" accept="audio/*" ref={fileInputRef} onChange={handleFileUpload} style={{ display: 'none' }} />
-        </div>
-      )}
-
-      {status === "playing" && mode === 'draw' && (
-        <div style={{ position: 'absolute', top: '20px', left: '30px', color: 'white', pointerEvents: 'none' }}>
-          <p style={{ margin: '5px 0 0', fontSize: '0.9rem', opacity: 0.7, fontFamily: 'monospace' }}>
-            {activeBrush === 'eraser' 
-              ? "❌ Clique em um desenho para apagar" 
-              : (activeBrush ? "🖊️ Arraste para desenhar som" : "👀 Arraste para girar a câmera")}
-          </p>
+          position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+          background: 'radial-gradient(circle at center, rgba(20,20,20,0.9) 0%, rgba(0,0,0,1) 100%)',
+          display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', zIndex: 20
+        }}>
+          {status === "idle" && (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '25px', width: '90%', maxWidth: '450px' }}>
+              <h1 style={{ color: 'white', fontSize: '3.5rem', margin: 0, textShadow: '0 0 40px rgba(255, 0, 85, 0.6)', textAlign: 'center', letterSpacing: '4px' }}>SYNESTHESIA</h1>
+              <p style={{ color: '#00f0ff', letterSpacing: '3px', marginBottom: '30px', fontWeight: 'bold' }}>PAINT THE SOUND</p>
+              <button onClick={() => fileInputRef.current.click()} style={{
+                width: '100%', padding: '18px', fontSize: '1.1rem', cursor: 'pointer',
+                background: 'linear-gradient(90deg, #ff0055 0%, #ff8800 100%)', color: 'white',
+                border: 'none', borderRadius: '12px', textTransform: 'uppercase', fontWeight: 'bold', letterSpacing: '1px',
+                boxShadow: '0 10px 30px rgba(255, 0, 85, 0.3)', transition: 'transform 0.2s'
+              }} onMouseOver={e => e.target.style.transform = 'scale(1.02)'} onMouseOut={e => e.target.style.transform = 'scale(1)'}>
+                📁 Upload MP3
+              </button>
+              <div style={{ color: '#444', fontSize: '0.8rem' }}>OU COLE UM LINK DO YOUTUBE</div>
+              <div style={{ display: 'flex', width: '100%', gap: '10px' }}>
+                <input ref={youtubeInputRef} placeholder="https://youtube.com/watch?v=..." style={{ flex: 1, padding: '15px', borderRadius: '12px', border: '1px solid #333', background: '#111', color: 'white', outline: 'none', fontFamily: 'monospace' }} />
+                <button onClick={handleYoutubeUpload} style={{ padding: '0 25px', cursor: 'pointer', background: '#333', color: 'white', border: '1px solid #444', borderRadius: '12px', fontWeight: 'bold', transition: 'background 0.2s' }}>▶</button>
+              </div>
+            </div>
+          )}
+          {(status === "processing" || status === "uploading") && (
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ width: '50px', height: '50px', border: '4px solid #ff0055', borderTop: '4px solid transparent', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 20px' }}></div>
+              <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+              <h2 style={{ color: 'white', letterSpacing: '1px' }}>PROCESSANDO ÁUDIO...</h2>
+              <p style={{ color: '#666', fontSize: '0.9rem' }}>A IA está separando os instrumentos...</p>
+            </div>
+          )}
+          {status === "loading_audio" && <h2 style={{ color: '#00ff00', textShadow: '0 0 20px #00ff00' }}>BAIXANDO STEMS... ⏳</h2>}
+          <input type="file" accept="audio/*" ref={fileInputRef} onChange={handleFileUpload} style={{ display: 'none' }} />
         </div>
       )}
     </div>
