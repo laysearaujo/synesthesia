@@ -8,6 +8,7 @@ import * as Tone from 'tone'
 const players = {}
 const meters = {}
 let availableStems = {}
+const BASE_BPM = 120
 
 // --- COMPONENTES VISUAIS ---
 
@@ -304,6 +305,9 @@ function App() {
   const [orbs, setOrbs] = useState([])
   const [draggedItem, setDraggedItem] = useState(null)
   const [youtubeUrl, setYoutubeUrl] = useState("") 
+ 
+  const [globalBpm, setGlobalBpm] = useState(BASE_BPM)
+
   
   // NOVO: Estados para Responsividade e UI
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
@@ -524,19 +528,29 @@ const handleStartVideoRecording = async () => {
   }
 
   const updateMix = (orbList) => {
-    orbList.forEach((orb) => {
-      if (players[orb.id]) {
-        const pan = Math.max(-1, Math.min(1, orb.position[0] / 8))
-        const panner = new Tone.Panner(pan).toDestination()
-        players[orb.id].disconnect()
-        players[orb.id].connect(panner)
-        if (meters[orb.id]) players[orb.id].connect(meters[orb.id])
-        const volume = (orb.position[2] * 2)
-        players[orb.id].volume.value = Math.min(0, volume)
-        players[orb.id].playbackRate = orb.playbackRate
+  const tempoFactor = globalBpm / BASE_BPM
+
+  orbList.forEach((orb) => {
+    if (players[orb.id]) {
+      const pan = Math.max(-1, Math.min(1, orb.position[0] / 8))
+      const panner = new Tone.Panner(pan).toDestination()
+
+      players[orb.id].disconnect()
+      players[orb.id].connect(panner)
+
+      if (meters[orb.id]) {
+        players[orb.id].connect(meters[orb.id])
       }
-    })
-  }
+
+      const volume = (orb.position[2] * 2)
+      players[orb.id].volume.value = Math.min(0, volume)
+
+      // AQUI: tempo local * fator global
+      const finalRate = orb.playbackRate * tempoFactor
+      players[orb.id].playbackRate = finalRate
+    }
+  })
+}
   
   const addOrb = (type) => {
     if (!availableStems[type]) return
@@ -566,11 +580,13 @@ const handleStartVideoRecording = async () => {
   const updateOrbScale = (id, newScale) => {
     const newOrbs = orbs.map(o => {
       if (o.id === id) {
-        const playbackRate = 1 / newScale
-        if (players[id]) players[id].playbackRate = playbackRate
-        return { ...o, scale: newScale, playbackRate }
-      } return o
-    }); setOrbs(newOrbs); updateMix(newOrbs)
+        const baseRate = 1 / newScale  // ou qualquer relação que você preferir
+        return { ...o, scale: newScale, playbackRate: baseRate }
+      }
+      return o
+    })
+    setOrbs(newOrbs)
+    updateMix(newOrbs)
   }
   
   const updateOrbPosition = (id, newPosition) => {
@@ -787,14 +803,50 @@ const handleStartVideoRecording = async () => {
 
           {/* Sidebar (Configurações) */}
           {showSidebar && (
-            <div style={{
-              position: 'absolute', top: isMobile ? '70px' : '20px', right: '20px',
-              background: 'rgba(10,10,10,0.9)', padding: '20px', borderRadius: '15px',
-              maxHeight: '70vh', overflowY: 'auto', zIndex: 30, 
-              width: isMobile ? '260px' : '220px',
-              backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.1)',
-              boxShadow: '-10px 10px 30px rgba(0,0,0,0.5)'
-            }}>
+            <div
+              style={{
+                position: 'absolute',
+                top: isMobile ? '70px' : '20px',
+                right: '20px',
+                background: 'rgba(10,10,10,0.9)',
+                padding: '20px',
+                borderRadius: '15px',
+                maxHeight: '70vh',
+                overflowY: 'auto',
+                zIndex: 30,
+                width: isMobile ? '260px' : '220px',
+                backdropFilter: 'blur(10px)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                boxShadow: '-10px 10px 30px rgba(0,0,0,0.5)',
+              }}
+            >
+              {/* Controle de BPM global */}
+              <div style={{ marginBottom: '15px' }}>
+                <label
+                  style={{
+                    color: '#ccc',
+                    fontSize: '0.7rem',
+                    display: 'block',
+                    marginBottom: '4px',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  BPM global: {globalBpm}
+                </label>
+                <input
+                  type="range"
+                  min="60"
+                  max="180"
+                  step="1"
+                  value={globalBpm}
+                  onChange={(e) => {
+                    const newBpm = parseInt(e.target.value, 10)
+                    setGlobalBpm(newBpm)
+                    updateMix(orbs)
+                  }}
+                  style={{ width: '100%' }}
+                />
+              </div>
               <h4 style={{ color: '#aaa', margin: '0 0 15px 0', fontSize: '0.8rem', textTransform: 'uppercase' }}>Mistura Ativa</h4>
               {orbs.length === 0 && <p style={{color: '#444', fontSize: '0.8rem'}}>Vazio. Adicione instrumentos.</p>}
               
