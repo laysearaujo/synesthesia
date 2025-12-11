@@ -13,9 +13,11 @@
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.4.0",
     "@react-three/postprocessing": "^3.0.4",
+    "konva": "^9.3.22",
     "matter-js": "^0.20.0",
-    "react": "^19.1.1",
-    "react-dom": "^19.1.1",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
+    "react-konva": "^19.0.2",
     "three": "^0.181.2",
     "tone": "^15.1.22"
   },

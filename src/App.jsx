@@ -1,8 +1,12 @@
-import { useRef, useState, useEffect, useMemo } from 'react'
-import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { OrbitControls, Line, Stars, Sparkles, Sphere, Torus, Icosahedron, Octahedron, Box, MeshDistortMaterial } from '@react-three/drei'
+import { useRef, useState, useEffect } from 'react'
+import { Canvas, useFrame } from '@react-three/fiber'
+import KonvaVisuals from './KonvaVisuals'
+import { OrbitControls, Stars, Sparkles, Sphere, Torus, Icosahedron, Octahedron, Box, MeshDistortMaterial } from '@react-three/drei'
 import * as THREE from 'three'
 import * as Tone from 'tone'
+import StemMapper from './StemMapper'
+import { OrbObject, TerrainObject, CloudObject, CometObject, visualMeters } from './VisualComponents'
+import { Stage, Layer, Line as KonvaLine } from 'react-konva'
 
 // --- URL DO BACKEND ---
 const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -14,6 +18,8 @@ const players = { drums: null, bass: null, vocals: null, guitar: null, piano: nu
 const meters = { drums: null, bass: null, vocals: null, guitar: null, piano: null }
 const BASE_BPM = 120 // ajuste se souber o BPM real da track
 
+// link meters to visual components (VisualComponents.jsx exports `visualMeters` object)
+try { Object.assign(visualMeters, meters) } catch(e) { /* ignore in case import not available yet */ }
 
 // Configuração dos Pincéis
 const BRUSHES = {
@@ -42,191 +48,193 @@ function CameraRig({ status }) {
 }
 
 // --- OBJETOS 3D (MODO PALCO) ---
-function DrumObject({ status }) {
+function DrumObject({ status, channel = 'drums' }) {
   const mesh = useRef()
   useFrame(() => {
-    if(!meters.drums) return
-    const energy = status === 'playing' ? Tone.dbToGain(meters.drums.getValue()) : 0
+    const meter = meters[channel]
+    if(!meter) return
+    const energy = status === 'playing' ? Tone.dbToGain(meter.getValue()) : 0
     const scale = 1.5 + (energy * 4) 
     mesh.current.scale.lerp(new THREE.Vector3(scale, scale, scale), 0.4)
     mesh.current.material.emissiveIntensity = 1 + (energy * 10)
     mesh.current.material.distort = 0.3 + (energy * 2)
   })
+  const brushKey = channel === 'drums' ? 'drum' : (channel === 'vocals' ? 'vocal' : channel)
   return (
     <Sphere ref={mesh} args={[1, 64, 64]} position={[0, 0, 0]}>
-      <MeshDistortMaterial color={BRUSHES.drum.color} emissive={BRUSHES.drum.color} speed={5} />
+      <MeshDistortMaterial color={BRUSHES[brushKey].color} emissive={BRUSHES[brushKey].color} speed={5} />
     </Sphere>
   )
 }
 
-function BassObject({ status }) {
+function BassObject({ status, channel = 'bass' }) {
   const mesh = useRef()
   useFrame(() => {
-    if(!meters.bass) return
-    const energy = status === 'playing' ? Tone.dbToGain(meters.bass.getValue()) : 0
+    const meter = meters[channel]
+    if(!meter) return
+    const energy = status === 'playing' ? Tone.dbToGain(meter.getValue()) : 0
     mesh.current.rotation.x += 0.01 + (energy * 0.1)
     mesh.current.scale.setScalar(2 + (energy * 2))
     mesh.current.material.color.setHSL(0.75, 1, 0.5 + energy)
   })
+  const brushKey = channel === 'drums' ? 'drum' : (channel === 'vocals' ? 'vocal' : channel)
   return (
     <Torus ref={mesh} args={[2, 0.2, 16, 100]} rotation={[1.5, 0, 0]}>
-      <meshStandardMaterial color={BRUSHES.bass.color} emissive={BRUSHES.bass.color} emissiveIntensity={2} />
+      <meshStandardMaterial color={BRUSHES[brushKey].color} emissive={BRUSHES[brushKey].color} emissiveIntensity={2} />
     </Torus>
   )
 }
 
-function VocalObject({ status }) {
+function VocalObject({ status, channel = 'vocals' }) {
   const mesh = useRef()
   useFrame((state) => {
-    if(!meters.vocals) return
+    const meter = meters[channel]
+    if(!meter) return
     const t = state.clock.getElapsedTime()
-    const energy = status === 'playing' ? Tone.dbToGain(meters.vocals.getValue()) : 0
+    const energy = status === 'playing' ? Tone.dbToGain(meter.getValue()) : 0
     mesh.current.position.y = 3 + Math.sin(t) * 0.5
     mesh.current.rotation.y += 0.01
     const scale = 1 + (energy * 3)
     mesh.current.scale.lerp(new THREE.Vector3(scale, scale, scale), 0.2)
     mesh.current.material.wireframe = energy < 0.2
   })
+  const brushKey = channel === 'drums' ? 'drum' : (channel === 'vocals' ? 'vocal' : channel)
   return (
     <Icosahedron ref={mesh} args={[1, 2]} position={[0, 3, 0]}>
-      <MeshDistortMaterial color={BRUSHES.vocal.color} emissive={BRUSHES.vocal.color} emissiveIntensity={3} distort={0.6} speed={3} />
+      <MeshDistortMaterial color={BRUSHES[brushKey].color} emissive={BRUSHES[brushKey].color} emissiveIntensity={3} distort={0.6} speed={3} />
     </Icosahedron>
   )
 }
 
-function GuitarObject({ status }) {
+function GuitarObject({ status, channel = 'guitar' }) {
   const mesh = useRef()
   useFrame(() => {
-    if(!meters.guitar) return
-    const energy = status === 'playing' ? Tone.dbToGain(meters.guitar.getValue()) : 0
+    const meter = meters[channel]
+    if(!meter) return
+    const energy = status === 'playing' ? Tone.dbToGain(meter.getValue()) : 0
     mesh.current.rotation.z -= 0.02 + energy
     mesh.current.scale.setScalar(0.8 + (energy * 4))
   })
+  const brushKey = channel === 'drums' ? 'drum' : (channel === 'vocals' ? 'vocal' : channel)
   return (
     <Octahedron ref={mesh} args={[1, 0]} position={[-4, 0, -2]}>
-       <meshStandardMaterial color={BRUSHES.guitar.color} emissive={BRUSHES.guitar.color} emissiveIntensity={4} wireframe />
+       <meshStandardMaterial color={BRUSHES[brushKey].color} emissive={BRUSHES[brushKey].color} emissiveIntensity={4} wireframe />
     </Octahedron>
   )
 }
 
-function PianoObject({ status }) {
+function PianoObject({ status, channel = 'piano' }) {
   const group = useRef()
   useFrame((state) => {
-    if(!meters.piano) return
-    const energy = status === 'playing' ? Tone.dbToGain(meters.piano.getValue()) : 0
+    const meter = meters[channel]
+    if(!meter) return
+    const energy = status === 'playing' ? Tone.dbToGain(meter.getValue()) : 0
     const t = state.clock.getElapsedTime()
     group.current.position.y = Math.sin(t * 2)
     group.current.children.forEach((child, i) => {
         child.scale.y = 1 + (energy * 5 * (i+1))
     })
   })
+  const brushKey = channel === 'drums' ? 'drum' : (channel === 'vocals' ? 'vocal' : channel)
   return (
     <group ref={group} position={[4, 0, -2]}>
         <Box args={[0.5, 1, 0.5]} position={[-0.5, 0, 0]}>
-            <meshStandardMaterial color={BRUSHES.piano.color} emissive={BRUSHES.piano.color} emissiveIntensity={2} />
+            <meshStandardMaterial color={BRUSHES[brushKey].color} emissive={BRUSHES[brushKey].color} emissiveIntensity={2} />
         </Box>
         <Box args={[0.5, 1, 0.5]} position={[0.5, 0, 0]}>
-            <meshStandardMaterial color={BRUSHES.piano.color} emissive={BRUSHES.piano.color} emissiveIntensity={2} />
+            <meshStandardMaterial color={BRUSHES[brushKey].color} emissive={BRUSHES[brushKey].color} emissiveIntensity={2} />
         </Box>
     </group>
   )
 }
 
-// --- MODO DESENHO: TRAÇO GROSSO E VIVO ---
-function LiveDrawing({ id, points, type, status, activeBrush, onDelete }) {
-  const lineRef = useRef()
-  
-  const typeToChannel = {
-    'drum': 'drums', 'bass': 'bass', 'vocal': 'vocals', 
-    'guitar': 'guitar', 'piano': 'piano'
-  }
+// Visual components have been moved to `src/VisualComponents.jsx` and are imported at top.
 
-  useFrame((state) => {
-    const channel = typeToChannel[type]
-    const meter = meters[channel]
-    const time = state.clock.getElapsedTime()
+// --- MODO DESENHO (2D) USANDO REACT-KONVA ---
+function KonvaDrawingBoard({ activeBrush, drawings, setDrawings, isDrawing, setIsDrawing }) {
+  const stageRef = useRef()
+  const [size, setSize] = useState({ width: window.innerWidth, height: window.innerHeight })
+  const [currentPoints, setCurrentPoints] = useState([])
 
-    let energy = 0
-    if (status === 'playing' && meter) {
-      const val = meter.getValue()
-      energy = (val > -100 && val < 100) ? Tone.dbToGain(val) : 0
-    } else {
-      energy = 0.1 + Math.sin(time * 2) * 0.05
-    }
+  // Recalcula tamanho ao redimensionar
+  useEffect(() => {
+    const onResize = () => setSize({ width: window.innerWidth, height: window.innerHeight })
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
 
-    if (lineRef.current && lineRef.current.material) {
-      const targetWidth = 1 + (energy * 20) 
-      lineRef.current.material.linewidth = THREE.MathUtils.lerp(
-        lineRef.current.material.linewidth, targetWidth, 0.2
-      )
-      
-      const baseColor = new THREE.Color(BRUSHES[type].color)
-      if (energy > 0.4) baseColor.lerp(new THREE.Color("white"), 0.9)
-      
-      lineRef.current.material.color.lerp(baseColor, 0.3)
-      lineRef.current.position.z = THREE.MathUtils.lerp(lineRef.current.position.z, energy * 5, 0.1)
-    }
-  })
+  const getColor = (brush) => (BRUSHES[brush]?.color || '#999')
 
-  // Manipulador de clique para apagar
-  const handleClick = (e) => {
-    if (activeBrush === 'eraser') {
-      e.stopPropagation() // Impede de desenhar ao clicar para apagar
-      onDelete(id)
-    }
-  }
-
-  return (
-    <Line 
-      ref={lineRef} 
-      points={points} 
-      color={BRUSHES[type].color} 
-      lineWidth={1} 
-      toneMapped={false} 
-      transparent 
-      opacity={0.9} 
-      onClick={handleClick}
-      onPointerOver={() => {
-        if(activeBrush === 'eraser') document.body.style.cursor = 'not-allowed'
-      }}
-      onPointerOut={() => document.body.style.cursor = 'auto'}
-    />
-  )
-}
-
-function DrawingCanvas({ activeBrush, onDrawComplete, isDrawing, setIsDrawing }) {
-  const { camera, raycaster, pointer } = useThree()
-  const [points, setPoints] = useState([])
-
-  const handlePointerDown = (e) => {
-    if (!activeBrush || activeBrush === 'eraser') return // Não desenha se for borracha
-    e.stopPropagation() 
+  const handlePointerDown = () => {
+    if (!activeBrush || activeBrush === 'eraser') return
+    const pos = stageRef.current?.getPointerPosition()
+    if (!pos) return
     setIsDrawing(true)
-    setPoints([[e.point.x, e.point.y, 0]]) 
+    setCurrentPoints([pos.x, pos.y])
   }
 
-  const handlePointerMove = (e) => {
+  const handlePointerMove = () => {
     if (!isDrawing) return
-    setPoints((prev) => [...prev, [e.point.x, e.point.y, 0]])
+    const pos = stageRef.current?.getPointerPosition()
+    if (!pos) return
+    setCurrentPoints((prev) => [...prev, pos.x, pos.y])
   }
 
   const handlePointerUp = () => {
-    if (isDrawing) {
-      setIsDrawing(false)
-      if (points.length > 2) {
-        onDrawComplete(points) 
-      }
-      setPoints([]) 
+    if (!isDrawing) return
+    setIsDrawing(false)
+    if (currentPoints.length > 4) {
+      setDrawings((prev) => [...prev, { id: Date.now(), brush: activeBrush, points: currentPoints }])
     }
+    setCurrentPoints([])
+  }
+
+  const handleDelete = (id) => {
+    if (activeBrush !== 'eraser') return
+    setDrawings((prev) => prev.filter((d) => d.id !== id))
   }
 
   return (
-    <>
-      <mesh visible={false} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} position={[0, 0, 0]}>
-        <planeGeometry args={[100, 100]} />
-      </mesh>
-      {isDrawing && <Line points={points} color="#ffffff" lineWidth={2} />}
-    </>
+    <div style={{ position: 'absolute', inset: 0, zIndex: 60 }}>
+      <Stage
+        ref={stageRef}
+        width={size.width}
+        height={size.height}
+        onMouseDown={handlePointerDown}
+        onMouseMove={handlePointerMove}
+        onMouseUp={handlePointerUp}
+        style={{ background: 'transparent' }}
+      >
+        <Layer>
+          {drawings.map((d) => (
+            <KonvaLine
+              key={d.id}
+              points={d.points}
+              stroke={getColor(d.brush)}
+              strokeWidth={6}
+              lineCap="round"
+              lineJoin="round"
+              tension={0.4}
+              opacity={0.9}
+              onClick={() => handleDelete(d.id)}
+              shadowBlur={12}
+            />
+          ))}
+          {isDrawing && currentPoints.length > 0 && (
+            <KonvaLine
+              points={currentPoints}
+              stroke={getColor(activeBrush)}
+              strokeWidth={6}
+              lineCap="round"
+              lineJoin="round"
+              tension={0.4}
+              opacity={0.5}
+              dash={[12, 8]}
+            />
+          )}
+        </Layer>
+      </Stage>
+    </div>
   )
 }
 
@@ -264,6 +272,103 @@ function App() {
   const [activeBrush, setActiveBrush] = useState(null) 
   const [isDrawing, setIsDrawing] = useState(false)
   const [availableInstruments, setAvailableInstruments] = useState(['drum', 'bass', 'vocal', 'guitar', 'piano'])
+
+  // Visual mapping state: stem/channel -> visual object id
+  const VISUAL_OBJECTS = ['Orb', 'Terrain', 'Comet', 'Cloud']
+  const defaultMapping = {
+    drums: 'Orb',
+    bass: 'Terrain',
+    vocals: 'Comet',
+    guitar: 'Cloud',
+    piano: 'Cloud'
+  }
+  const [visualMapping, setVisualMapping] = useState(defaultMapping)
+  
+  // Default shapes - fixed and persistent
+  const DEFAULT_SHAPES = {
+    Orb: [[-1,-1,0], [-0.5,-1.2,0], [0,-1,0], [0.5,-1.2,0], [1,-1,0], [1.2,-0.5,0], [1.2,0,0], [1.2,0.5,0], [1,1,0], [0.5,1.2,0], [0,-1,0], [-0.5,1.2,0], [-1,1,0], [-1.2,0.5,0], [-1.2,0,0], [-1.2,-0.5,0]],
+    Terrain: [[-2,-0.5,0], [-1.5,-0.3,0], [-1,-0.4,0], [-0.5,-0.2,0], [0,0,0], [0.5,-0.2,0], [1,-0.4,0], [1.5,-0.3,0], [2,-0.5,0], [2,0.5,0], [0,0.5,0], [-2,0.5,0]],
+    Comet: [[-2,-0.3,0], [-1.5,-0.5,0], [-1,-0.4,0], [-0.5,-0.6,0], [0,-0.5,0], [0.5,-0.6,0], [1,-0.4,0], [1.5,-0.5,0], [2,-0.3,0]],
+    Cloud: [[-1.5,-0.5,0], [-1,-0.8,0], [-0.5,-0.7,0], [0,-0.9,0], [0.5,-0.7,0], [1,-0.8,0], [1.5,-0.5,0], [0.8,0.3,0], [0,0.5,0], [-0.8,0.3,0]]
+  }
+  const [visualShapes, setVisualShapes] = useState(DEFAULT_SHAPES)
+
+  // Update mapping and ensure uniqueness by swapping if necessary
+  const updateMapping = async (stemId, newVisualId) => {
+    // Optimistic update locally
+    let previous
+    setVisualMapping(prev => {
+      previous = prev
+      const currentForStem = prev[stemId]
+      const otherStem = Object.keys(prev).find(k => prev[k] === newVisualId)
+      const next = { ...prev }
+      if (otherStem && otherStem !== stemId) {
+        next[otherStem] = currentForStem
+      }
+      next[stemId] = newVisualId
+      return next
+    })
+
+    // Persist to backend
+    try {
+      const res = await fetch(`${API_URL}/visual-mapping`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(visualMapping ? { ...visualMapping, [stemId]: newVisualId } : { [stemId]: newVisualId })
+      })
+      const data = await res.json()
+      if (!data.success) {
+        console.warn('Failed to persist visual mapping', data)
+        // revert to previous on failure
+        setVisualMapping(previous)
+        alert('Não foi possível salvar o mapeamento no servidor.')
+      } else {
+        // ensure local state equals server's authoritative mapping
+        if (data.mapping) setVisualMapping(prev => ({ ...prev, ...data.mapping }))
+      }
+    } catch (e) {
+      console.warn('Error saving visual mapping', e)
+      setVisualMapping(previous)
+      alert('Erro de rede: não foi possível salvar o mapeamento')
+    }
+  }
+
+  // Load mapping from backend on mount
+  useEffect(() => {
+    let mounted = true
+    const load = async () => {
+      try {
+        const res = await fetch(`${API_URL}/visual-mapping`)
+        const data = await res.json()
+        if (mounted && data && data.success && data.mapping) {
+          // Merge with defaults to ensure keys exist
+          setVisualMapping(prev => ({ ...prev, ...data.mapping }))
+        }
+        // Also try loading shapes
+        const shapesRes = await fetch(`${API_URL}/visual-shapes`)
+        const shapesData = await shapesRes.json()
+        if (mounted && shapesData && shapesData.success && shapesData.shapes) {
+          setVisualShapes(prev => ({ ...prev, ...shapesData.shapes }))
+        }
+      } catch (e) {
+        console.warn('Could not load from server', e)
+      }
+    }
+    load()
+    return () => { mounted = false }
+  }, [])
+
+  
+  const saveVisualShape = (visualId, points) => {
+    // Save shape locally and to backend
+    setVisualShapes(prev => ({ ...prev, [visualId]: points }))
+    // Persist to backend
+    fetch(`${API_URL}/visual-shapes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ [visualId]: points })
+    }).catch(e => console.warn('Failed to save shape', e))
+  }
 
   const [isPlaying, setIsPlaying] = useState(false)
   const [trackDuration, setTrackDuration] = useState(0)
@@ -493,9 +598,9 @@ function App() {
     }
 
     const t = { 
-      drums: load(urls.drums, 'drum'), 
+      drums: load(urls.drums, 'drums'), 
       bass: load(urls.bass, 'bass'), 
-      vocals: load(urls.vocals, 'vocal'), 
+      vocals: load(urls.vocals, 'vocals'), 
       guitar: load(urls.guitar, 'guitar'), 
       piano: load(urls.piano, 'piano') 
     }
@@ -503,6 +608,10 @@ function App() {
     setAvailableInstruments(validInsts)
 
     for (const k in t) { players[k] = t[k].p; meters[k] = t[k].m }
+    // Expose meters to VisualComponents
+    Object.assign(visualMeters, meters)
+    // Also expose for Konva overlay
+    try { window.visualMeters = visualMeters } catch(e) {}
 
     try {
       await Tone.loaded()
@@ -524,11 +633,12 @@ function App() {
   return (
     <div style={{ width: "100vw", height: "100vh", background: "#050505", cursor: (mode === 'draw' && activeBrush && activeBrush !== 'eraser') ? 'crosshair' : (activeBrush === 'eraser' ? 'alias' : 'auto') }}>
       
-       <Canvas
-        camera={{ position: [0, 0, 15] }}
-        onCreated={({ gl }) => setCanvasEl(gl.domElement)}
-      >
-        <color attach="background" args={['#050505']} />
+        {/* Use Konva overlay for scene rendering (fallback to 2D canvas) */}
+        {mode === 'scene' ? (
+          <KonvaVisuals visualMapping={visualMapping} visualShapes={visualShapes} availableInstruments={availableInstruments} status={status} />
+        ) : (
+          <Canvas camera={{ position: [0, 0, 15] }}>
+            <color attach="background" args={['#050505']} />
         <ambientLight intensity={0.5} />
         <pointLight position={[10, 10, 10]} intensity={1} />
         <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade speed={1} />
@@ -536,35 +646,42 @@ function App() {
 
         <CameraRig status={status} />
 
-        {mode === 'draw' && (
-          <>
-            {drawings.map((draw) => (
-              <LiveDrawing 
-                key={draw.id} 
-                id={draw.id}
-                points={draw.points} 
-                type={draw.type} 
-                status={status}
-                activeBrush={activeBrush} // Passa o pincel atual para saber se é borracha
-                onDelete={handleDeleteDrawing} // Função de deletar
-              />
-            ))}
-            <DrawingCanvas activeBrush={activeBrush} onDrawComplete={handleDrawComplete} isDrawing={isDrawing} setIsDrawing={setIsDrawing} />
-          </>
-        )}
-
         {mode === 'scene' && (
           <>
-            {availableInstruments.includes('drum') && <DrumObject status={status} />}
-            {availableInstruments.includes('bass') && <BassObject status={status} />}
-            {availableInstruments.includes('vocal') && <VocalObject status={status} />}
-            {availableInstruments.includes('guitar') && <GuitarObject status={status} />}
-            {availableInstruments.includes('piano') && <PianoObject status={status} />}
+            {/* Render scene objects based on dynamic visualMapping */}
+            {Object.entries(visualMapping).map(([stem, visual]) => {
+              // only render if this channel/instrument is available
+              if (!availableInstruments.includes(stem)) return null
+              const key = stem + '-' + visual
+                switch (visual) {
+                  case 'Orb':
+                    return <OrbObject key={key} status={status} channel={stem} shapePoints={visualShapes['Orb']} />
+                  case 'Terrain':
+                    return <TerrainObject key={key} status={status} channel={stem} shapePoints={visualShapes['Terrain']} />
+                  case 'Comet':
+                    return <CometObject key={key} status={status} channel={stem} shapePoints={visualShapes['Comet']} />
+                  case 'Cloud':
+                    return <CloudObject key={key} status={status} channel={stem} shapePoints={visualShapes['Cloud']} />
+                  default:
+                    return null
+                }
+            })}
           </>
         )}
 
         <OrbitControls enabled={!isDrawing && !(mode==='draw' && activeBrush && activeBrush !== 'eraser')} makeDefault />
-      </Canvas>
+          </Canvas>
+        )}
+
+      {status === 'playing' && mode === 'draw' && (
+        <KonvaDrawingBoard
+          activeBrush={activeBrush}
+          drawings={drawings}
+          setDrawings={setDrawings}
+          isDrawing={isDrawing}
+          setIsDrawing={setIsDrawing}
+        />
+      )}
 
       {/* Título e Seletor de Modo (TOPO DIREITO para não atrapalhar o player) */}
       <div style={{ position: 'absolute', top: '20px', right: '20px', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '10px', zIndex: 100 }}>
@@ -632,6 +749,10 @@ function App() {
             {isVideoRecording ? 'Parar e baixar vídeo' : 'Gravar vídeo & áudio'}
           </button>
         </div>
+      )}
+
+      {status === 'playing' && (
+        <StemMapper stems={availableInstruments} mapping={visualMapping} visuals={VISUAL_OBJECTS} updateMapping={updateMapping} />
       )}
 
       {status === "playing" && (
@@ -709,18 +830,20 @@ function App() {
           display: 'flex', gap: '15px', zIndex: 100, boxShadow: '0 10px 40px rgba(0,0,0,0.6)'
         }}>
           {availableInstruments.map(key => {
-            const info = BRUSHES[key]
-            return (
-              <button 
-                key={key}
-                onClick={() => setActiveBrush(activeBrush === key ? null : key)}
+            const instrumentToBrush = { drums: 'drum', vocals: 'vocal', bass: 'bass', guitar: 'guitar', piano: 'piano' }
+            const brushKey = instrumentToBrush[key] || key
+            const info = BRUSHES[brushKey] || { color: '#999', name: key, icon: '🎵' }
+             return (
+               <button 
+                 key={key}
+                 onClick={() => setActiveBrush(activeBrush === brushKey ? null : brushKey)}
                 style={{
-                  background: activeBrush === key ? info.color : 'transparent',
+                  background: activeBrush === brushKey ? info.color : 'transparent',
                   color: 'white', border: `2px solid ${info.color}`,
                   width: '50px', height: '50px', borderRadius: '15px', cursor: 'pointer',
                   display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                  boxShadow: activeBrush === key ? `0 0 25px ${info.color}` : 'none',
-                  transform: activeBrush === key ? 'translateY(-10px) scale(1.1)' : 'none',
+                  boxShadow: activeBrush === brushKey ? `0 0 25px ${info.color}` : 'none',
+                  transform: activeBrush === brushKey ? 'translateY(-10px) scale(1.1)' : 'none',
                   transition: 'all 0.2s'
                 }}
                 title={info.name}
