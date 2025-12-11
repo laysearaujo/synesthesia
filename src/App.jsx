@@ -1,430 +1,384 @@
-import React, { useRef, useState, useEffect } from 'react'
-import { Canvas, useFrame } from '@react-three/fiber'
-import { OrbitControls, MeshDistortMaterial, Sphere } from '@react-three/drei'
+import { useRef, useState, useEffect, useMemo } from 'react'
+import { Canvas, useFrame, useThree } from '@react-three/fiber'
+import { OrbitControls, Line, Stars, Sparkles, Sphere, Torus, Icosahedron, Octahedron, Box, MeshDistortMaterial } from '@react-three/drei'
 import * as THREE from 'three'
 import * as Tone from 'tone'
 
-// --- ESTADO GLOBAL ---
-const players = {}
-const meters = {}
-let availableStems = {}
+// --- URL DO BACKEND ---
+const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+  ? 'http://localhost:3001' 
+  : 'https://synesthesia-server.onrender.com'
 
-// --- COMPONENTES VISUAIS ---
+// --- GLOBAIS DE ÁUDIO ---
+const players = { drums: null, bass: null, vocals: null, guitar: null, piano: null }
+const meters = { drums: null, bass: null, vocals: null, guitar: null, piano: null }
 
-function DrumsOrb({ status, id, scale: customScale, position }) {
-  const meshRef = useRef()
-  const matRef = useRef()
+// Configuração dos Pincéis
+const BRUSHES = {
+  drum:   { color: "#ff003c", name: "Bateria", icon: "🥁" }, 
+  bass:   { color: "#8A2BE2", name: "Baixo", icon: "🎸" },   
+  vocal:  { color: "#00f0ff", name: "Voz", icon: "🎤" },     
+  guitar: { color: "#ffaa00", name: "Guitarra", icon: "⚡" },
+  piano:  { color: "#39ff14", name: "Piano", icon: "🎹" }    
+}
+
+// --- EFEITO DE CÂMERA ---
+function CameraRig({ status }) {
   useFrame((state) => {
-    const time = state.clock.getElapsedTime()
-    let energy = 0
-    let distortForce = 0.3
-    if (status === 'playing' && meters[id]) {
-      const val = meters[id].getValue()
-      energy = (val > -100 && val < 100) ? Tone.dbToGain(val) : 0
-      distortForce = 0.3 + (energy * 4) 
-      if (meshRef.current) {
-        const baseScale = customScale * 2.0
-        const scale = baseScale + (energy * 0.8 * customScale) 
-        meshRef.current.scale.lerp(new THREE.Vector3(scale, scale, scale), 0.4)
-      }
+    if (status !== 'playing' || !meters.bass) return
+    const val = meters.bass.getValue()
+    const energy = (val > -100 && val < 100) ? Tone.dbToGain(val) : 0
+    const targetZ = 15 - (energy * 5) 
+    state.camera.position.z = THREE.MathUtils.lerp(state.camera.position.z, targetZ, 0.15)
+    if(energy > 0.6) {
+        state.camera.rotation.z = THREE.MathUtils.lerp(state.camera.rotation.z, (Math.random() - 0.5) * 0.02, 0.2)
     } else {
-      const pulse = Math.sin(time * 2) * 0.1
-      const scale = customScale * 2.0 + pulse
-      if (meshRef.current) meshRef.current.scale.set(scale, scale, scale)
-    }
-    if (matRef.current) {
-      matRef.current.distort = THREE.MathUtils.lerp(matRef.current.distort, distortForce, 0.1)
-      if (status === 'playing') {
-         const targetColor = energy > 0.4 ? new THREE.Color("#ffffff") : new THREE.Color("#ff0055")
-         matRef.current.emissive.lerp(targetColor, 0.3)
-      } else {
-         matRef.current.emissive.set("#ff0055")
-      }
+        state.camera.rotation.z = THREE.MathUtils.lerp(state.camera.rotation.z, 0, 0.1)
     }
   })
+  return null
+}
+
+// --- OBJETOS 3D (MODO PALCO) ---
+function DrumObject({ status }) {
+  const mesh = useRef()
+  useFrame(() => {
+    if(!meters.drums) return
+    const energy = status === 'playing' ? Tone.dbToGain(meters.drums.getValue()) : 0
+    const scale = 1.5 + (energy * 4) 
+    mesh.current.scale.lerp(new THREE.Vector3(scale, scale, scale), 0.4)
+    mesh.current.material.emissiveIntensity = 1 + (energy * 10)
+    mesh.current.material.distort = 0.3 + (energy * 2)
+  })
   return (
-    <Sphere args={[1, 64, 64]} position={position} ref={meshRef}>
-      <MeshDistortMaterial ref={matRef} color="#ff0055" emissive="#550022" emissiveIntensity={2} roughness={0.1} metalness={0.9} speed={3} />
+    <Sphere ref={mesh} args={[1, 64, 64]} position={[0, 0, 0]}>
+      <MeshDistortMaterial color={BRUSHES.drum.color} emissive={BRUSHES.drum.color} speed={5} />
     </Sphere>
   )
 }
 
-// 2. BAIXO: Tubo Oscilante (Corda Grossa 3D)
-function BassWave({ status, id, scale: customScale, position, playbackRate }) {
-  const meshRef = useRef()
+function BassObject({ status }) {
+  const mesh = useRef()
+  useFrame(() => {
+    if(!meters.bass) return
+    const energy = status === 'playing' ? Tone.dbToGain(meters.bass.getValue()) : 0
+    mesh.current.rotation.x += 0.01 + (energy * 0.1)
+    mesh.current.scale.setScalar(2 + (energy * 2))
+    mesh.current.material.color.setHSL(0.75, 1, 0.5 + energy)
+  })
+  return (
+    <Torus ref={mesh} args={[2, 0.2, 16, 100]} rotation={[1.5, 0, 0]}>
+      <meshStandardMaterial color={BRUSHES.bass.color} emissive={BRUSHES.bass.color} emissiveIntensity={2} />
+    </Torus>
+  )
+}
+
+function VocalObject({ status }) {
+  const mesh = useRef()
+  useFrame((state) => {
+    if(!meters.vocals) return
+    const t = state.clock.getElapsedTime()
+    const energy = status === 'playing' ? Tone.dbToGain(meters.vocals.getValue()) : 0
+    mesh.current.position.y = 3 + Math.sin(t) * 0.5
+    mesh.current.rotation.y += 0.01
+    const scale = 1 + (energy * 3)
+    mesh.current.scale.lerp(new THREE.Vector3(scale, scale, scale), 0.2)
+    mesh.current.material.wireframe = energy < 0.2
+  })
+  return (
+    <Icosahedron ref={mesh} args={[1, 2]} position={[0, 3, 0]}>
+      <MeshDistortMaterial color={BRUSHES.vocal.color} emissive={BRUSHES.vocal.color} emissiveIntensity={3} distort={0.6} speed={3} />
+    </Icosahedron>
+  )
+}
+
+function GuitarObject({ status }) {
+  const mesh = useRef()
+  useFrame(() => {
+    if(!meters.guitar) return
+    const energy = status === 'playing' ? Tone.dbToGain(meters.guitar.getValue()) : 0
+    mesh.current.rotation.z -= 0.02 + energy
+    mesh.current.scale.setScalar(0.8 + (energy * 4))
+  })
+  return (
+    <Octahedron ref={mesh} args={[1, 0]} position={[-4, 0, -2]}>
+       <meshStandardMaterial color={BRUSHES.guitar.color} emissive={BRUSHES.guitar.color} emissiveIntensity={4} wireframe />
+    </Octahedron>
+  )
+}
+
+function PianoObject({ status }) {
+  const group = useRef()
+  useFrame((state) => {
+    if(!meters.piano) return
+    const energy = status === 'playing' ? Tone.dbToGain(meters.piano.getValue()) : 0
+    const t = state.clock.getElapsedTime()
+    group.current.position.y = Math.sin(t * 2)
+    group.current.children.forEach((child, i) => {
+        child.scale.y = 1 + (energy * 5 * (i+1))
+    })
+  })
+  return (
+    <group ref={group} position={[4, 0, -2]}>
+        <Box args={[0.5, 1, 0.5]} position={[-0.5, 0, 0]}>
+            <meshStandardMaterial color={BRUSHES.piano.color} emissive={BRUSHES.piano.color} emissiveIntensity={2} />
+        </Box>
+        <Box args={[0.5, 1, 0.5]} position={[0.5, 0, 0]}>
+            <meshStandardMaterial color={BRUSHES.piano.color} emissive={BRUSHES.piano.color} emissiveIntensity={2} />
+        </Box>
+    </group>
+  )
+}
+
+// --- MODO DESENHO: TRAÇO GROSSO E VIVO ---
+function LiveDrawing({ id, points, type, status, activeBrush, onDelete }) {
+  const lineRef = useRef()
   
-  // Configuração do Tubo:
-  // [RaioTopo, RaioBase, Altura(Comprimento), SegmentsRadial, SegmentsAltura]
-  // Altura 8 = Comprimento da corda
-  // Raio 0.15 = Espessura total de 0.3 (igual a voz)
-  const args = [0.15, 0.15, 8, 12, 64] 
-
-  useEffect(() => {
-    // Truque para animação 3D: Salvar as posições originais dos vértices
-    // para que possamos deformar o tubo sem "amassar" ele para sempre.
-    if (meshRef.current) {
-       const geometry = meshRef.current.geometry
-       // Clona a posição inicial para 'userData' para termos uma referência estática
-       geometry.userData.originalPos = geometry.attributes.position.clone()
-    }
-  }, [])
+  const typeToChannel = {
+    'drum': 'drums', 'bass': 'bass', 'vocal': 'vocals', 
+    'guitar': 'guitar', 'piano': 'piano'
+  }
 
   useFrame((state) => {
-    if (!meshRef.current || !meshRef.current.geometry.userData.originalPos) return
-    
+    const channel = typeToChannel[type]
+    const meter = meters[channel]
     const time = state.clock.getElapsedTime()
+
     let energy = 0
-    
-    if (status === 'playing' && meters[id]) {
-      const val = meters[id].getValue()
-      energy = Tone.dbToGain(val)
+    if (status === 'playing' && meter) {
+      const val = meter.getValue()
+      energy = (val > -100 && val < 100) ? Tone.dbToGain(val) : 0
+    } else {
+      energy = 0.1 + Math.sin(time * 2) * 0.05
     }
 
-    const geometry = meshRef.current.geometry
-    const positionAttribute = geometry.attributes.position
-    const originalPos = geometry.userData.originalPos // Lemos do original
-    
-    const vertex = new THREE.Vector3()
+    if (lineRef.current && lineRef.current.material) {
+      const targetWidth = 1 + (energy * 20) 
+      lineRef.current.material.linewidth = THREE.MathUtils.lerp(
+        lineRef.current.material.linewidth, targetWidth, 0.2
+      )
+      
+      const baseColor = new THREE.Color(BRUSHES[type].color)
+      if (energy > 0.4) baseColor.lerp(new THREE.Color("white"), 0.9)
+      
+      lineRef.current.material.color.lerp(baseColor, 0.3)
+      lineRef.current.position.z = THREE.MathUtils.lerp(lineRef.current.position.z, energy * 5, 0.1)
+    }
+  })
 
-    for (let i = 0; i < positionAttribute.count; i++) {
-      // Ler do original (estático)
-      vertex.fromBufferAttribute(originalPos, i)
-      
-      // O Cilindro é criado em pé (eixo Y). Nós o deitamos depois com rotation.
-      // Então aqui, 'y' é o comprimento da corda.
-      const lengthPos = vertex.y 
-      
-      const waveSpeed = time * 3 * playbackRate
-      const waveFrequency = 1.5
-      
-      // Amplitude base + energia do som
-      const amplitude = 0.2 + (energy * 3 * customScale)
-      
-      // Cálculo da Onda Senoidal
-      const waveOffset = Math.sin(lengthPos * waveFrequency + waveSpeed) * amplitude
+  // Manipulador de clique para apagar
+  const handleClick = (e) => {
+    if (activeBrush === 'eraser') {
+      e.stopPropagation() // Impede de desenhar ao clicar para apagar
+      onDelete(id)
+    }
+  }
 
-      // Aplicar a onda no eixo X (que será a altura no mundo real após rotação)
-      // Somamos à posição original para manter a espessura do tubo
-      const currentX = vertex.x + waveOffset
-      const currentZ = vertex.z + (Math.cos(lengthPos * waveFrequency + waveSpeed) * amplitude * 0.3)
+  return (
+    <Line 
+      ref={lineRef} 
+      points={points} 
+      color={BRUSHES[type].color} 
+      lineWidth={1} 
+      toneMapped={false} 
+      transparent 
+      opacity={0.9} 
+      onClick={handleClick}
+      onPointerOver={() => {
+        if(activeBrush === 'eraser') document.body.style.cursor = 'not-allowed'
+      }}
+      onPointerOut={() => document.body.style.cursor = 'auto'}
+    />
+  )
+}
 
-      if (status !== 'playing') {
-          // Movimento suave "Idle"
-          const idleWave = Math.sin(lengthPos + time) * 0.2
-          positionAttribute.setX(i, vertex.x + idleWave)
-          positionAttribute.setZ(i, vertex.z)
-      } else {
-          // Movimento intenso "Playing"
-          positionAttribute.setX(i, currentX)
-          positionAttribute.setZ(i, currentZ) // Um pouco de movimento lateral também
+function DrawingCanvas({ activeBrush, onDrawComplete, isDrawing, setIsDrawing }) {
+  const { camera, raycaster, pointer } = useThree()
+  const [points, setPoints] = useState([])
+
+  const handlePointerDown = (e) => {
+    if (!activeBrush || activeBrush === 'eraser') return // Não desenha se for borracha
+    e.stopPropagation() 
+    setIsDrawing(true)
+    setPoints([[e.point.x, e.point.y, 0]]) 
+  }
+
+  const handlePointerMove = (e) => {
+    if (!isDrawing) return
+    setPoints((prev) => [...prev, [e.point.x, e.point.y, 0]])
+  }
+
+  const handlePointerUp = () => {
+    if (isDrawing) {
+      setIsDrawing(false)
+      if (points.length > 2) {
+        onDrawComplete(points) 
       }
+      setPoints([]) 
     }
-    
-    positionAttribute.needsUpdate = true
-    
-    // Posicionamento geral
-    meshRef.current.position.set(position[0], position[1], position[2])
-    
-    // Rotação leve do objeto inteiro
-    meshRef.current.rotation.x = Math.sin(time * 0.2) * 0.1
-  })
+  }
 
   return (
-    <mesh ref={meshRef} position={position} rotation={[0, 0, Math.PI / 2]}> 
-      {/* Rotação Z = 90 graus para deitar o cilindro */}
-      <cylinderGeometry args={args} />
-      {/* Material sólido e brilhante para combinar com os outros */}
-      <meshPhysicalMaterial 
-        color="#4b0082" 
-        emissive="#6a0dad" 
-        emissiveIntensity={2} 
-        roughness={0.2} 
-        metalness={0.8} 
-        clearcoat={1}
-      />
-    </mesh>
+    <>
+      <mesh visible={false} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} position={[0, 0, 0]}>
+        <planeGeometry args={[100, 100]} />
+      </mesh>
+      {isDrawing && <Line points={points} color="#ffffff" lineWidth={2} />}
+    </>
   )
 }
 
-function VocalKnot({ status, id, scale: customScale, position, playbackRate }) {
-  const meshRef = useRef()
-  useFrame((state) => {
-    const time = state.clock.getElapsedTime()
-    let energy = 0
-    if (status === 'playing' && meters[id]) energy = Tone.dbToGain(meters[id].getValue())
-    if (meshRef.current) {
-        meshRef.current.position.y = position[1] + Math.sin(time * 0.5) * 0.3
-        meshRef.current.rotation.x = time * 0.2 * playbackRate
-        meshRef.current.rotation.y = time * 0.3 * playbackRate
-        const baseScale = customScale * 0.8
-        const targetScale = baseScale + (energy * 1.5 * customScale)
-        meshRef.current.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.05)
-    }
-  })
-  return (
-    <mesh ref={meshRef} position={position}>
-      {/* O segundo argumento (0.25) é a grossura do tubo. O baixo agora tem 0.3, bem próximo. */}
-      <torusKnotGeometry args={[1, 0.25, 128, 16]} />
-      <meshStandardMaterial color="#00ffff" emissive="#00aaaa" emissiveIntensity={1.2} roughness={0} metalness={1} opacity={0.9} transparent />
-    </mesh>
-  )
-}
-
-function GuitarShards({ status, id, scale: customScale, position, playbackRate }) {
-  const groupRef = useRef()
-  // 3 "Shards" (Estilhaços) principais
-  const shards = [-1.2, 0, 1.2] 
-
-  useFrame((state) => {
-    if (status !== 'playing' || !meters[id]) return
-
-    // Pegamos a energia do áudio
-    const val = meters[id].getValue()
-    const energy = (val > -100) ? Tone.dbToGain(val) : 0
-    
-    if (groupRef.current) {
-       // Rotação constante + explosão de velocidade na batida
-       groupRef.current.rotation.x += (0.005 + energy * 0.5) * playbackRate
-       groupRef.current.rotation.y += (0.01 + energy * 0.5) * playbackRate
-       
-       // Expansão: Quando a guitarra toca, os cristais se afastam do centro
-       const expansion = 1 + (energy * 4) // Multiplicador de "explosão"
-
-       groupRef.current.children.forEach((child, i) => {
-         // Posição baseada no índice (-1, 0, 1)
-         // Se afastam horizontalmente
-         const xOffset = (i - 1) * 1.5 
-         
-         // Interpolação suave para a posição de "ataque"
-         child.position.x = THREE.MathUtils.lerp(child.position.x, xOffset * expansion, 0.2)
-         
-         // Eles também sobem/descem aleatoriamente com a energia
-         const noise = Math.sin(state.clock.elapsedTime * 10 + i) 
-         child.position.y = THREE.MathUtils.lerp(child.position.y, noise * energy * 2, 0.2)
-
-         // Rotação individual frenética
-         child.rotation.z += 0.05 + energy
-         
-         // Cor: Fica mais branca/brilhante quando toca forte
-         if (child.material) {
-             const targetIntensity = 1 + (energy * 10) // Brilho intenso
-             child.material.emissiveIntensity = THREE.MathUtils.lerp(child.material.emissiveIntensity, targetIntensity, 0.3)
-         }
-       })
-
-       // Escala geral do grupo controlada pelo slider
-       const s = customScale
-       groupRef.current.scale.lerp(new THREE.Vector3(s, s, s), 0.1)
-    }
-  })
+function MusicPlayer({ isPlaying, onPlayPause, duration, currentTime, onSeek }) {
+  const fmt = (t) => {
+    if (!t && t !== 0) return "0:00"
+    const m = Math.floor(t / 60)
+    const s = Math.floor(t % 60)
+    return `${m}:${s < 10 ? '0' : ''}${s}`
+  }
 
   return (
-    <group position={position} ref={groupRef}>
-       {shards.map((i, index) => (
-         <mesh key={index} position={[i, 0, 0]}>
-           {/* Tetrahedron = Pirâmide (Mais agressivo que esfera/cubo) */}
-           <tetrahedronGeometry args={[0.6, 0]} /> 
-           
-           {/* Material Sólido Metálico Incandescente */}
-           <meshPhysicalMaterial 
-             color="#ff5500"       // Laranja Avermelhado
-             emissive="#ff2200"    // Brilha vermelho
-             emissiveIntensity={1} // Brilho base
-             roughness={0.2}       // Meio liso
-             metalness={0.9}       // Bem metálico
-             clearcoat={1}         // Camada de verniz por cima
-             clearcoatRoughness={0.1}
-           />
-         </mesh>
-       ))}
-    </group>
+    <div style={{
+      position: 'absolute', bottom: '120px', left: '50%', transform: 'translateX(-50%)',
+      width: '90%', maxWidth: '600px',
+      background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(10px)',
+      padding: '10px 20px', borderRadius: '15px', border: '1px solid rgba(255,255,255,0.1)',
+      display: 'flex', alignItems: 'center', gap: '15px', zIndex: 100
+    }}>
+      <button onClick={onPlayPause} style={{ background: 'none', border: 'none', color: '#00f0ff', fontSize: '24px', cursor: 'pointer', display: 'flex' }}>
+        {isPlaying ? '⏸' : '▶'}
+      </button>
+      <span style={{ color: '#fff', fontFamily: 'monospace', fontSize: '12px', minWidth: '40px' }}>{fmt(currentTime)}</span>
+      <input type="range" min="0" max={duration || 100} value={currentTime || 0} onChange={(e) => onSeek(parseFloat(e.target.value))} style={{ flex: 1, accentColor: '#00f0ff', height: '4px', cursor: 'pointer' }} />
+      <span style={{ color: '#fff', fontFamily: 'monospace', fontSize: '12px', minWidth: '40px' }}>{fmt(duration)}</span>
+    </div>
   )
 }
-function PianoHelix({ status, id, scale: customScale, position, playbackRate }) {
-  const groupRef = useRef()
-  const keys = [0, 1, 2, 3, 4]
-  useFrame((state) => {
-    const time = state.clock.getElapsedTime()
-    if (status !== 'playing' || !meters[id]) return
-    const energy = Tone.dbToGain(meters[id].getValue())
-    if (groupRef.current) {
-        groupRef.current.rotation.y = time * 0.2 * playbackRate
-        groupRef.current.children.forEach((child, i) => {
-           const offset = i * 0.5
-           const jump = Math.sin(time * 5 + offset) * energy * 2
-           child.position.y = (i * 0.6) - 1.5 + jump 
-           child.material.emissiveIntensity = 1 + (energy * 5)
-        })
-        const s = customScale
-        groupRef.current.scale.lerp(new THREE.Vector3(s, s, s), 0.1)
-    }
-  })
-  return (
-    <group position={position} ref={groupRef}>
-        {keys.map((k) => (
-          <mesh key={k} rotation={[0, k * 0.5, 0]} position={[0, (k*0.6)-1.5, 0]}>
-              <boxGeometry args={[1.2, 0.2, 0.4]} />
-              <meshStandardMaterial color="#00ff88" emissive="#00ff88" />
-          </mesh>
-        ))}
-    </group>
-  )
-}
-
-// --- CONFIGURAÇÕES E MAPAS ---
-
-const OrbComponents = {
-  drums: DrumsOrb,
-  bass: BassWave,
-  vocals: VocalKnot,
-  guitar: GuitarShards,
-  piano: PianoHelix
-}
-
-const OrbColors = {
-  drums: '#ff0055',
-  bass: '#4b0082',
-  vocals: '#00ffff',
-  guitar: '#ff8800',
-  piano: '#00ff88'
-}
-
-const OrbNames = {
-  drums: '🥁',
-  bass: '🔊', 
-  vocals: '🎤',
-  guitar: '🎸',
-  piano: '🎹'
-}
-
-// --- APLICAÇÃO PRINCIPAL ---
 
 function App() {
   const [status, setStatus] = useState("idle")
-  const [orbs, setOrbs] = useState([])
-  const [draggedItem, setDraggedItem] = useState(null)
-  const [youtubeUrl, setYoutubeUrl] = useState("") 
+  const [drawings, setDrawings] = useState([]) 
+  const [mode, setMode] = useState('draw') 
   
-  // NOVO: Estados para Responsividade e UI
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
-  const [showSidebar, setShowSidebar] = useState(!isMobile) // Mobile começa fechado
+  const [activeBrush, setActiveBrush] = useState(null) 
+  const [isDrawing, setIsDrawing] = useState(false)
+  const [availableInstruments, setAvailableInstruments] = useState(['drum', 'bass', 'vocal', 'guitar', 'piano'])
+
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [trackDuration, setTrackDuration] = useState(0)
+  const [currentTime, setCurrentTime] = useState(0)
+
   const fileInputRef = useRef(null)
+  const youtubeInputRef = useRef(null)
 
-  // Listener de redimensionamento
   useEffect(() => {
-    const handleResize = () => {
-      const mobile = window.innerWidth < 768
-      setIsMobile(mobile)
-      if (!mobile) setShowSidebar(true) // Abre sidebar se voltar pra desktop
+    let interval
+    if (status === 'playing' && isPlaying) {
+      interval = setInterval(() => setCurrentTime(Tone.Transport.seconds), 100)
     }
-    window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
-  }, [])
+    return () => clearInterval(interval)
+  }, [status, isPlaying])
 
-  // 1. INPUT DE ARQUIVO
-  const handleFileButtonClick = async () => {
-    await Tone.start()
-    fileInputRef.current.click()
+  const handleDrawComplete = (points) => {
+    setDrawings([...drawings, { id: Date.now(), type: activeBrush, points }])
   }
 
-  // 2. INPUT DO YOUTUBE
-  const handleYoutubeSubmit = async () => {
-    if (!youtubeUrl) return alert("Por favor, cole um link do YouTube!")
-    await Tone.start()
-    setStatus("downloading") 
-    const progressTimer = setTimeout(() => setStatus("separating"), 10000)
+  // --- FUNÇÃO PARA DELETAR DESENHO ESPECÍFICO ---
+  const handleDeleteDrawing = (id) => {
+    setDrawings(prev => prev.filter(d => d.id !== id))
+  }
 
-    try {
-      const response = await fetch('https://synesthesia-server.onrender.com/process-youtube', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: youtubeUrl })
-      })
-      const data = await response.json()
-      clearTimeout(progressTimer) 
-      processResponseData(data)
-    } catch (e) {
-      console.error(e)
-      clearTimeout(progressTimer)
-      alert("Erro ao conectar com servidor.")
-      setStatus("idle")
+  const togglePlay = () => {
+    if (Tone.Transport.state === 'started') {
+      Tone.Transport.pause(); setIsPlaying(false)
+    } else {
+      Tone.Transport.start(); setIsPlaying(true)
     }
   }
 
-  const handleFileChange = async (event) => {
+  const seekTrack = (time) => {
+    Tone.Transport.seconds = time; setCurrentTime(time)
+  }
+
+  const handleFileUpload = async (event) => {
     const file = event.target.files[0]
     if (!file) return
-    setStatus("processing")
     const formData = new FormData()
     formData.append('audio', file)
+    processAudioSource(formData, 'separate')
+  }
+
+  const handleYoutubeUpload = async () => {
+    const url = youtubeInputRef.current.value
+    if (!url) return alert("Cole uma URL do YouTube")
+    processAudioSource({ url }, 'process-youtube')
+  }
+
+  const processAudioSource = async (bodyData, endpoint) => {
+    setStatus("uploading")
     try {
-      const response = await fetch('https://synesthesia-server.onrender.com/separate', { method: 'POST', body: formData })
+      setStatus("processing")
+      const headers = bodyData instanceof FormData ? {} : { 'Content-Type': 'application/json' }
+      const body = bodyData instanceof FormData ? bodyData : JSON.stringify(bodyData)
+
+      const response = await fetch(`${API_URL}/${endpoint}`, { method: 'POST', headers, body })
       const data = await response.json()
-      processResponseData(data)
-    } catch (e) {
-      console.error(e)
-      alert("Erro de conexão com servidor.")
-      setStatus("idle")
-    }
-  }
-
-  const processResponseData = async (data) => {
-    if (data.success) {
-      if (data.isDemo) alert("Modo Demo: Usando áudio de exemplo.")
-      availableStems = data.stems
-      const initialOrbs = []
-      // Posições ajustadas para caber melhor na tela se for mobile? 
-      // Por enquanto mantemos padrão, mas o zoom da câmera resolve.
-      const positions = {
-        drums: [0, 0, 0],
-        bass: [0, -3.5, 0],
-        vocals: [0, 3.5, 0],
-        guitar: [-5, 0, -2],
-        piano: [5, 0, -2]
+      
+      if (data.success) {
+        if(data.isDemo) alert("⚠️ Modo Demo (API Falhou)")
+        if(data.cached) console.log("⚡ Cache Hit!")
+        await carregarStems(data.stems)
+      } else {
+        alert("Erro: " + (data.error || "Desconhecido"))
+        setStatus("idle")
       }
-      Object.keys(data.stems).forEach((stem) => {
-        if (data.stems[stem]) {
-          initialOrbs.push({
-            id: `${stem}-0`, type: stem, scale: 1, position: positions[stem] || [0, 0, 0], playbackRate: 1
-          })
-        }
-      })
-      setOrbs(initialOrbs)
-      await carregarStems(initialOrbs)
-    } else {
-      alert("Erro no servidor: " + (data.error || "Desconhecido"))
+    } catch (e) {
+      alert(`Erro de conexão com servidor (${API_URL})`)
       setStatus("idle")
     }
   }
 
-  const carregarStems = async (orbList) => {
+  const carregarStems = async (urls) => {
     setStatus("loading_audio")
+    await Tone.start()
+    Tone.Transport.stop(); Tone.Transport.cancel()
+    
     Object.values(players).forEach(p => p && p.dispose())
-    Object.keys(players).forEach(k => delete players[k])
-    Object.keys(meters).forEach(k => delete meters[k])
+    Object.values(meters).forEach(m => m && m.dispose())
 
-    const loadTrack = (url) => {
-       if (!url) return null
+    const validInsts = []
+
+    const load = (url, type) => {
+       if (!url) return { p: null, m: null }
+       validInsts.push(type) 
        const p = new Tone.Player(url).toDestination()
+       p.sync().start(0) 
        const m = new Tone.Meter({ smoothing: 0.8 })
-       p.connect(m); p.loop = true; p.autostart = false
+       p.connect(m)
        return { p, m }
     }
-    orbList.forEach(orb => {
-      const url = availableStems[orb.type]
-      if (url) {
-        const track = loadTrack(url)
-        if (track) {
-          players[orb.id] = track.p; meters[orb.id] = track.m; track.p.playbackRate = orb.playbackRate
-        }
-      }
-    })
+
+    const t = { 
+      drums: load(urls.drums, 'drum'), 
+      bass: load(urls.bass, 'bass'), 
+      vocals: load(urls.vocals, 'vocal'), 
+      guitar: load(urls.guitar, 'guitar'), 
+      piano: load(urls.piano, 'piano') 
+    }
+    
+    setAvailableInstruments(validInsts)
+
+    for (const k in t) { players[k] = t[k].p; meters[k] = t[k].m }
+
     try {
       await Tone.loaded()
-      const now = Tone.now() + 0.1
-      Object.values(players).forEach(p => p && p.start(now))
+      const duration = players.drums ? players.drums.buffer.duration : 30
+      setTrackDuration(duration)
+      Tone.Transport.loop = true; Tone.Transport.loopEnd = duration
+      Tone.Transport.start()
+      setIsPlaying(true)
       setStatus("playing")
-      updateMix(orbList)
+      if (validInsts.includes('drum')) setActiveBrush('drum') 
+      else if (validInsts.length > 0) setActiveBrush(validInsts[0])
     } catch (e) {
       console.error(e)
       alert("Erro ao carregar áudio.")
@@ -432,261 +386,168 @@ function App() {
     }
   }
 
-  const updateMix = (orbList) => {
-    orbList.forEach((orb) => {
-      if (players[orb.id]) {
-        const pan = Math.max(-1, Math.min(1, orb.position[0] / 8))
-        const panner = new Tone.Panner(pan).toDestination()
-        players[orb.id].disconnect()
-        players[orb.id].connect(panner)
-        if (meters[orb.id]) players[orb.id].connect(meters[orb.id])
-        const volume = (orb.position[2] * 2)
-        players[orb.id].volume.value = Math.min(0, volume)
-        players[orb.id].playbackRate = orb.playbackRate
-      }
-    })
-  }
-  
-  const addOrb = (type) => {
-    if (!availableStems[type]) return
-    const newId = `${type}-${Date.now()}`
-    // Posição aleatória menor para telas menores
-    const range = isMobile ? 2 : 4
-    const newOrb = {
-        id: newId, type, scale: 1, 
-        position: [Math.random() * range - (range/2), Math.random() * range - (range/2), 0], 
-        playbackRate: 1
-    }
-    const newOrbs = [...orbs, newOrb]
-    setOrbs(newOrbs)
-    const url = availableStems[type]
-    const p = new Tone.Player(url).toDestination()
-    const m = new Tone.Meter({ smoothing: 0.8 })
-    p.connect(m); p.loop = true; players[newId] = p; meters[newId] = m
-    if (status === 'playing') p.start()
-    updateMix(newOrbs)
-  }
-  
-  const removeOrb = (id) => {
-    if (players[id]) { players[id].stop(); players[id].dispose(); delete players[id]; delete meters[id] }
-    const newOrbs = orbs.filter(o => o.id !== id); setOrbs(newOrbs); updateMix(newOrbs)
-  }
-  
-  const updateOrbScale = (id, newScale) => {
-    const newOrbs = orbs.map(o => {
-      if (o.id === id) {
-        const playbackRate = 1 / newScale
-        if (players[id]) players[id].playbackRate = playbackRate
-        return { ...o, scale: newScale, playbackRate }
-      } return o
-    }); setOrbs(newOrbs); updateMix(newOrbs)
-  }
-  
-  const updateOrbPosition = (id, newPosition) => {
-    const newOrbs = orbs.map(o => { if (o.id === id) return { ...o, position: newPosition }; return o }); setOrbs(newOrbs); updateMix(newOrbs)
-  }
-  
-  // Drag logic (Desktop)
-  const handleDragStart = (e, type) => setDraggedItem(type)
-  const handleDragOver = (e) => e.preventDefault()
-  const handleOrbDrop = (e) => {
-    e.preventDefault()
-    if (draggedItem && availableStems[draggedItem]) { addOrb(draggedItem); setDraggedItem(null) }
-  }
-
-  // --- RENDERIZAÇÃO ---
   return (
-    <div style={{ width: "100vw", height: "100vh", background: "#050505", overflow: "hidden", fontFamily: 'sans-serif' }}>
+    <div style={{ width: "100vw", height: "100vh", background: "#050505", cursor: (mode === 'draw' && activeBrush && activeBrush !== 'eraser') ? 'crosshair' : (activeBrush === 'eraser' ? 'alias' : 'auto') }}>
       
-      {/* Canvas com ajuste de FOV para mobile (câmera mais longe se a tela for estreita) */}
-      <Canvas 
-        camera={{ position: [0, 0, isMobile ? 18 : 14], fov: 45 }} 
-        onDrop={handleOrbDrop} 
-        onDragOver={handleDragOver}
-      >
+      <Canvas camera={{ position: [0, 0, 15] }}>
+        <color attach="background" args={['#050505']} />
         <ambientLight intensity={0.5} />
-        <pointLight position={[10, 10, 10]} intensity={1.5} />
-        {orbs.map(orb => {
-          const OrbComponent = OrbComponents[orb.type]
-          return OrbComponent ? (
-            <OrbComponent key={orb.id} id={orb.id} status={status} scale={orb.scale} position={orb.position} playbackRate={orb.playbackRate} />
-          ) : null
-        })}
-        <OrbitControls enableZoom={true} />
+        <pointLight position={[10, 10, 10]} intensity={1} />
+        <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade speed={1} />
+        <Sparkles count={500} scale={20} size={2} speed={0.4} opacity={0.5} color="#00f0ff" />
+
+        <CameraRig status={status} />
+
+        {mode === 'draw' && (
+          <>
+            {drawings.map((draw) => (
+              <LiveDrawing 
+                key={draw.id} 
+                id={draw.id}
+                points={draw.points} 
+                type={draw.type} 
+                status={status}
+                activeBrush={activeBrush} // Passa o pincel atual para saber se é borracha
+                onDelete={handleDeleteDrawing} // Função de deletar
+              />
+            ))}
+            <DrawingCanvas activeBrush={activeBrush} onDrawComplete={handleDrawComplete} isDrawing={isDrawing} setIsDrawing={setIsDrawing} />
+          </>
+        )}
+
+        {mode === 'scene' && (
+          <>
+            {availableInstruments.includes('drum') && <DrumObject status={status} />}
+            {availableInstruments.includes('bass') && <BassObject status={status} />}
+            {availableInstruments.includes('vocal') && <VocalObject status={status} />}
+            {availableInstruments.includes('guitar') && <GuitarObject status={status} />}
+            {availableInstruments.includes('piano') && <PianoObject status={status} />}
+          </>
+        )}
+
+        <OrbitControls enabled={!isDrawing && !(mode==='draw' && activeBrush && activeBrush !== 'eraser')} makeDefault />
       </Canvas>
 
-      {/* TELA INICIAL / UPLOAD */}
-      {status !== "playing" && (
+      {/* Título e Seletor de Modo (TOPO DIREITO para não atrapalhar o player) */}
+      <div style={{ position: 'absolute', top: '20px', right: '20px', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '10px', zIndex: 100 }}>
+        <h1 style={{ fontSize: '1.5rem', margin: 0, textShadow: '0 0 10px #ff0055', color: 'white' }}>SYNESTHESIA</h1>
+        {status === 'playing' && (
+          <div style={{ background: 'rgba(0,0,0,0.8)', padding: '5px', borderRadius: '30px', border: '1px solid #333', display: 'flex', gap: '5px' }}>
+            <button onClick={() => setMode('draw')} style={{
+              padding: '8px 15px', borderRadius: '25px', border: 'none', cursor: 'pointer',
+              background: mode === 'draw' ? '#00f0ff' : 'transparent', color: mode === 'draw' ? 'black' : 'white', fontWeight: 'bold'
+            }}>🖌️ PINTURA</button>
+            <button onClick={() => setMode('scene')} style={{
+              padding: '8px 15px', borderRadius: '25px', border: 'none', cursor: 'pointer',
+              background: mode === 'scene' ? '#00f0ff' : 'transparent', color: mode === 'scene' ? 'black' : 'white', fontWeight: 'bold'
+            }}>🔮 PALCO</button>
+          </div>
+        )}
+      </div>
+
+      {status === "playing" && (
+        <MusicPlayer isPlaying={isPlaying} onPlayPause={togglePlay} duration={trackDuration} currentTime={currentTime} onSeek={seekTrack} />
+      )}
+
+      {status === "playing" && mode === 'draw' && (
         <div style={{
-            position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
-            background: 'rgba(0,0,0,0.85)', padding: '20px', boxSizing: 'border-box',
-            display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center',
-            zIndex: 20
-          }}>
-           {status === "idle" && (
-             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px', width: '100%', maxWidth: '500px' }}>
-                <h1 style={{ 
-                    color: 'white', fontSize: isMobile ? '2.5rem' : '4rem', margin: 0, 
-                    letterSpacing: '0.2em', textShadow: '0 0 30px #ff0055', textAlign: 'center' 
-                  }}>
-                  SYNESTHESIA
-                </h1>
-                <p style={{ color: '#aaa', letterSpacing: '2px', marginBottom: '20px', textAlign: 'center', fontSize: isMobile ? '0.8rem' : '1rem' }}>
-                  VISUALIZADOR DE STEMS 3D
-                </p>
-                
-                <button onClick={handleFileButtonClick} style={{
-                    padding: '15px 0', fontSize: '1rem', cursor: 'pointer', width: '100%',
-                    background: '#ff0055', color: 'white', border: 'none', borderRadius: '50px',
-                    textTransform: 'uppercase', fontWeight: 'bold', boxShadow: '0 0 20px rgba(255, 0, 85, 0.4)',
-                  }}>
-                  📂 Carregar MP3
-                </button>
+          position: 'absolute', bottom: '20px', left: '50%', transform: 'translateX(-50%)',
+          background: 'rgba(20, 20, 30, 0.9)', backdropFilter: 'blur(12px)',
+          padding: '10px 20px', borderRadius: '25px', border: '1px solid rgba(255,255,255,0.1)',
+          display: 'flex', gap: '15px', zIndex: 100, boxShadow: '0 10px 40px rgba(0,0,0,0.6)'
+        }}>
+          {availableInstruments.map(key => {
+            const info = BRUSHES[key]
+            return (
+              <button 
+                key={key}
+                onClick={() => setActiveBrush(activeBrush === key ? null : key)}
+                style={{
+                  background: activeBrush === key ? info.color : 'transparent',
+                  color: 'white', border: `2px solid ${info.color}`,
+                  width: '50px', height: '50px', borderRadius: '15px', cursor: 'pointer',
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                  boxShadow: activeBrush === key ? `0 0 25px ${info.color}` : 'none',
+                  transform: activeBrush === key ? 'translateY(-10px) scale(1.1)' : 'none',
+                  transition: 'all 0.2s'
+                }}
+                title={info.name}
+              >
+                <span style={{fontSize: '24px'}}>{info.icon}</span>
+              </button>
+            )
+          })}
+          
+          <div style={{ width: '1px', background: 'white', margin: '0 5px', opacity: 0.3 }}></div>
+          
+          {/* Botão BORRACHA (Para apagar um por um) */}
+          <button 
+            onClick={() => setActiveBrush(activeBrush === 'eraser' ? null : 'eraser')} 
+            style={{ 
+              background: activeBrush === 'eraser' ? '#ff4444' : 'transparent', 
+              border: '2px solid #ff4444', borderRadius: '15px', width: '50px', height: '50px', 
+              fontSize:'24px', cursor:'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              transform: activeBrush === 'eraser' ? 'translateY(-10px) scale(1.1)' : 'none',
+              transition: 'all 0.2s'
+            }} 
+            title="Borracha (Clique para apagar)"
+          >
+            🧽
+          </button>
 
-                {/* <div style={{ color: '#555' }}>— OU —</div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}>
-                    <div style={{ display: 'flex', gap: '10px' }}>
-                        <input 
-                            type="text" 
-                            placeholder="Link do YouTube..." 
-                            value={youtubeUrl}
-                            onChange={(e) => setYoutubeUrl(e.target.value)}
-                            style={{
-                                flex: 1, padding: '12px 15px', borderRadius: '25px', border: '1px solid #444',
-                                background: 'rgba(255,255,255,0.1)', color: 'white', outline: 'none', width: '100%'
-                            }}
-                        />
-                        <button onClick={handleYoutubeSubmit} style={{
-                            padding: '10px 20px', borderRadius: '25px', border: '1px solid #ff0055',
-                            background: 'transparent', color: '#ff0055', cursor: 'pointer', fontWeight: 'bold'
-                        }}>
-                            GO
-                        </button>
-                    </div>
-
-                    <p style={{ color: '#888', fontSize: '0.7rem', margin: 0, textAlign: 'left' }}>
-                    <strong>Dica:</strong> Use o botão "Compartilhar" do vídeo e copie o link curto.
-                    </p>
-                </div> 
-                */}
-             </div>
-           )}
-           
-           {(status === "processing" || status === "downloading" || status === "separating") && (
-             <div style={{ textAlign: 'center', padding: '0 20px' }}>
-                <h2 style={{ color: '#ff0055', animation: 'pulse 1s infinite', textTransform: 'uppercase', fontSize: isMobile ? '1.2rem' : '1.5rem' }}>
-                    {status === "downloading" && "BAIXANDO..."}
-                    {status === "separating" && "SEPARANDO FAIXAS..."}
-                    {status === "processing" && "PROCESSANDO..."}
-                </h2>
-                <p style={{ color: '#ccc', fontSize: '0.9rem' }}>Aguarde um momento.</p>
-             </div>
-           )}
-           
-           {status === "loading_audio" && <h2 style={{ color: '#00ff00', fontSize: '1.2rem' }}>SINCRONIZANDO...</h2>}
-           <input type="file" accept="audio/*" ref={fileInputRef} onChange={handleFileChange} style={{ display: 'none' }} />
+          {/* Botão LIMPAR TUDO */}
+          <button onClick={() => setDrawings([])} style={{ background:'transparent', border:'none', fontSize:'24px', cursor:'pointer', opacity: 0.7 }} title="Limpar Tudo">
+            🗑️
+          </button>
         </div>
       )}
 
-      {/* INTERFACE DE JOGO */}
-      {status === "playing" && (
-        <>
-          {/* Header Mobile-Friendly */}
-          <div style={{ position: 'absolute', top: '20px', left: '20px', zIndex: 10, pointerEvents: 'none' }}>
-             <h3 style={{ color: 'white', margin: 0, letterSpacing: '2px', fontSize: isMobile ? '1rem' : '1.2rem' }}>SYNESTHESIA</h3>
-             <p style={{ color: '#666', fontSize: '0.7rem', margin: 0 }}>
-               {isMobile ? "Toque nos ícones para adicionar" : "Arraste ou clique nos ícones"}
-             </p>
-          </div>
-
-          {/* Botão Toggle Sidebar (Só aparece se necessário) */}
-          <button 
-            onClick={() => setShowSidebar(!showSidebar)}
-            style={{
-              position: 'absolute', top: '20px', right: '20px', zIndex: 40,
-              background: 'rgba(20,20,20,0.8)', color: 'white', border: '1px solid #444',
-              borderRadius: '50%', width: '40px', height: '40px', cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center'
-            }}
-          >
-            {showSidebar ? '✕' : '⚙️'}
-          </button>
-
-          {/* Docker (Barra Inferior) */}
-          <div style={{
-            position: 'absolute', bottom: '30px', left: '50%', transform: 'translateX(-50%)',
-            background: 'rgba(20,20,20,0.9)', padding: '10px 20px', borderRadius: '20px',
-            display: 'flex', gap: isMobile ? '15px' : '20px', zIndex: 30,
-            border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
-            maxWidth: '90vw', overflowX: 'auto'
+      {status !== "playing" && (
+        <div style={{
+            position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+            background: 'radial-gradient(circle at center, rgba(20,20,20,0.9) 0%, rgba(0,0,0,1) 100%)', 
+            display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', zIndex: 20
           }}>
-            {Object.keys(OrbComponents).map(type => (
-              availableStems[type] && (
-                <div
-                  key={type}
-                  draggable={!isMobile} // Só arrasta no desktop
-                  onDragStart={(e) => handleDragStart(e, type)}
-                  onClick={() => addOrb(type)} // NOVO: Clique funciona no mobile
-                  style={{
-                    minWidth: '45px', width: '45px', height: '45px', borderRadius: '12px',
-                    background: OrbColors[type], display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    cursor: 'pointer', fontSize: '0.6rem', color: 'white', fontWeight: 'bold',
-                    boxShadow: `0 0 10px ${OrbColors[type]}`,
-                    border: '2px solid rgba(255,255,255,0.2)',
-                    userSelect: 'none'
-                  }}
-                >
-                  {OrbNames[type]}
+           {status === "idle" && (
+             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '25px', width: '90%', maxWidth: '450px' }}>
+                <h1 style={{ color: 'white', fontSize: '3.5rem', margin: 0, textShadow: '0 0 40px rgba(255, 0, 85, 0.6)', textAlign: 'center', letterSpacing: '4px' }}>SYNESTHESIA</h1>
+                <p style={{ color: '#00f0ff', letterSpacing: '3px', marginBottom: '30px', fontWeight: 'bold' }}>PAINT THE SOUND</p>
+                <button onClick={() => fileInputRef.current.click()} style={{
+                    width: '100%', padding: '18px', fontSize: '1.1rem', cursor: 'pointer',
+                    background: 'linear-gradient(90deg, #ff0055 0%, #ff8800 100%)', color: 'white', 
+                    border: 'none', borderRadius: '12px', textTransform: 'uppercase', fontWeight: 'bold', letterSpacing: '1px',
+                    boxShadow: '0 10px 30px rgba(255, 0, 85, 0.3)', transition: 'transform 0.2s'
+                  }} onMouseOver={e => e.target.style.transform = 'scale(1.02)'} onMouseOut={e => e.target.style.transform = 'scale(1)'}>
+                  📁 Upload MP3
+                </button>
+                <div style={{color: '#444', fontSize: '0.8rem'}}>OU COLE UM LINK DO YOUTUBE</div>
+                <div style={{ display: 'flex', width: '100%', gap: '10px' }}>
+                  <input ref={youtubeInputRef} placeholder="https://youtube.com/watch?v=..." style={{ flex: 1, padding: '15px', borderRadius: '12px', border: '1px solid #333', background: '#111', color: 'white', outline: 'none', fontFamily: 'monospace' }} />
+                  <button onClick={handleYoutubeUpload} style={{ padding: '0 25px', cursor: 'pointer', background: '#333', color: 'white', border: '1px solid #444', borderRadius: '12px', fontWeight: 'bold', transition: 'background 0.2s' }}>▶</button>
                 </div>
-              )
-            ))}
-          </div>
+             </div>
+           )}
+           {(status === "processing" || status === "uploading") && (
+             <div style={{textAlign: 'center'}}>
+               <div style={{ width: '50px', height: '50px', border: '4px solid #ff0055', borderTop: '4px solid transparent', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 20px' }}></div>
+               <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+               <h2 style={{color:'white', letterSpacing: '1px'}}>PROCESSANDO ÁUDIO...</h2>
+               <p style={{color:'#666', fontSize: '0.9rem'}}>A IA está separando os instrumentos...</p>
+             </div>
+           )}
+           {status === "loading_audio" && <h2 style={{color:'#00ff00', textShadow: '0 0 20px #00ff00'}}>BAIXANDO STEMS... ⏳</h2>}
+           <input type="file" accept="audio/*" ref={fileInputRef} onChange={handleFileUpload} style={{ display: 'none' }} />
+        </div>
+      )}
 
-          {/* Sidebar (Configurações) */}
-          {showSidebar && (
-            <div style={{
-              position: 'absolute', top: isMobile ? '70px' : '20px', right: '20px',
-              background: 'rgba(10,10,10,0.9)', padding: '20px', borderRadius: '15px',
-              maxHeight: '70vh', overflowY: 'auto', zIndex: 30, 
-              width: isMobile ? '260px' : '220px',
-              backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.1)',
-              boxShadow: '-10px 10px 30px rgba(0,0,0,0.5)'
-            }}>
-              <h4 style={{ color: '#aaa', margin: '0 0 15px 0', fontSize: '0.8rem', textTransform: 'uppercase' }}>Mistura Ativa</h4>
-              {orbs.length === 0 && <p style={{color: '#444', fontSize: '0.8rem'}}>Vazio. Adicione instrumentos.</p>}
-              
-              {orbs.map(orb => (
-                <div key={orb.id} style={{
-                  background: 'rgba(255,255,255,0.03)', padding: '10px', marginBottom: '10px',
-                  borderRadius: '8px', borderLeft: `3px solid ${OrbColors[orb.type]}`
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                    <span style={{ color: 'white', fontSize: '0.8rem', fontWeight: 'bold' }}>{OrbNames[orb.type]} {orb.type}</span>
-                    <button onClick={() => removeOrb(orb.id)} style={{
-                        background: 'transparent', border: 'none', color: '#ff4444', 
-                        cursor: 'pointer', fontSize: '1.2rem', padding: '0 5px'
-                      }}>×</button>
-                  </div>
-                  
-                  <div style={{ marginBottom: '8px' }}>
-                    <label style={{ color: '#666', fontSize: '0.65rem', display: 'block' }}>Escala / Tempo</label>
-                    <input type="range" min="0.5" max="2" step="0.1" value={orb.scale}
-                      onChange={(e) => updateOrbScale(orb.id, parseFloat(e.target.value))}
-                      style={{ width: '100%', accentColor: OrbColors[orb.type] }} />
-                  </div>
-
-                  <div>
-                    <label style={{ color: '#666', fontSize: '0.65rem', display: 'block' }}>Posição X / Pan</label>
-                    <input type="range" min="-6" max="6" step="0.5" value={orb.position[0]}
-                      onChange={(e) => updateOrbPosition(orb.id, [parseFloat(e.target.value), orb.position[1], orb.position[2]])}
-                      style={{ width: '100%', accentColor: OrbColors[orb.type] }} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </>
+      {status === "playing" && mode === 'draw' && (
+        <div style={{ position: 'absolute', top: '20px', left: '30px', color: 'white', pointerEvents: 'none' }}>
+          <p style={{ margin: '5px 0 0', fontSize: '0.9rem', opacity: 0.7, fontFamily: 'monospace' }}>
+            {activeBrush === 'eraser' 
+              ? "❌ Clique em um desenho para apagar" 
+              : (activeBrush ? "🖊️ Arraste para desenhar som" : "👀 Arraste para girar a câmera")}
+          </p>
+        </div>
       )}
     </div>
   )
