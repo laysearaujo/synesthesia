@@ -309,7 +309,68 @@ function App() {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
   const [showSidebar, setShowSidebar] = useState(!isMobile) // Mobile começa fechado
   const fileInputRef = useRef(null)
+  const recorderRef = useRef(null)
+  const [isRecording, setIsRecording] = useState(false)
+  const [canvasEl, setCanvasEl] = useState(null)
+  const videoRecorderRef = useRef(null)
+const [isVideoRecording, setIsVideoRecording] = useState(false)
 
+
+const handleStartVideoRecording = async () => {
+  if (!canvasEl) return
+  await Tone.start()
+
+  // stream de vídeo do canvas
+  const videoStream = canvasEl.captureStream(60) // 60fps
+
+  // destino de áudio do Web Audio (Tone)
+  const audioContext = Tone.getContext().rawContext
+  const audioDest = audioContext.createMediaStreamDestination()
+  Tone.Destination.connect(audioDest)
+
+  // junta tracks de vídeo + áudio
+  const mixedStream = new MediaStream([
+    ...videoStream.getVideoTracks(),
+    ...audioDest.stream.getAudioTracks()
+  ])
+
+  const recorder = new MediaRecorder(mixedStream, {
+    mimeType: 'video/webm;codecs=vp9'
+  })
+
+  const chunks = []
+  recorder.ondataavailable = (e) => {
+    if (e.data.size > 0) chunks.push(e.data)
+  }
+
+  recorder.onstop = () => {
+    const blob = new Blob(chunks, { type: 'video/webm' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'synesthesia-visual.webm'
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+    Tone.Destination.disconnect(audioDest)
+  }
+
+  videoRecorderRef.current = recorder
+  recorder.start() // começa a gravar já
+  setIsVideoRecording(true)
+}
+
+
+  useEffect(() => {
+    const recorder = new Tone.Recorder()
+    Tone.Destination.connect(recorder)
+    recorderRef.current = recorder
+
+    return () => {
+      Tone.Destination.disconnect(recorder)
+    }
+  }, [])
   // Listener de redimensionamento
   useEffect(() => {
     const handleResize = () => {
@@ -367,6 +428,36 @@ function App() {
       setStatus("idle")
     }
   }
+  const handleStopVideoRecording = () => {
+  if (!videoRecorderRef.current) return
+  videoRecorderRef.current.stop()
+  setIsVideoRecording(false)
+}
+
+
+  const handleStartRecording = async () => {
+    if (!recorderRef.current) return
+    await Tone.start() // garante que o contexto de áudio está ativo
+    recorderRef.current.start()
+    setIsRecording(true)
+  }
+
+  const handleStopRecording = async () => {
+    if (!recorderRef.current) return
+
+    const recording = await recorderRef.current.stop() // Blob de áudio
+    setIsRecording(false)
+
+    const url = URL.createObjectURL(recording)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'synesthesia-mix.webm' // pode trocar para .wav, se preferir
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  }
+
 
   const processResponseData = async (data) => {
     if (data.success) {
@@ -499,10 +590,11 @@ function App() {
     <div style={{ width: "100vw", height: "100vh", background: "#050505", overflow: "hidden", fontFamily: 'sans-serif' }}>
       
       {/* Canvas com ajuste de FOV para mobile (câmera mais longe se a tela for estreita) */}
-      <Canvas 
-        camera={{ position: [0, 0, isMobile ? 18 : 14], fov: 45 }} 
-        onDrop={handleOrbDrop} 
+      <Canvas
+        camera={{ position: [0, 0, isMobile ? 18 : 14], fov: 45 }}
+        onDrop={handleOrbDrop}
         onDragOver={handleDragOver}
+        onCreated={({ gl }) => setCanvasEl(gl.domElement)}
       >
         <ambientLight intensity={0.5} />
         <pointLight position={[10, 10, 10]} intensity={1.5} />
@@ -599,6 +691,56 @@ function App() {
                {isMobile ? "Toque nos ícones para adicionar" : "Arraste ou clique nos ícones"}
              </p>
           </div>
+          {/* Botões de gravação (mix + vídeo) */}
+          <div
+            style={{
+              position: 'absolute',
+              top: '20px',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              zIndex: 20,
+              pointerEvents: 'auto',
+              display: 'flex',
+              gap: '10px',
+            }}
+          >
+            <button
+              onClick={isRecording ? handleStopRecording : handleStartRecording}
+              style={{
+                padding: '8px 16px',
+                borderRadius: '20px',
+                border: '1px solid #ff0055',
+                background: isRecording ? '#ff0055' : 'transparent',
+                color: 'white',
+                fontSize: '0.8rem',
+                textTransform: 'uppercase',
+                cursor: 'pointer',
+                boxShadow: '0 0 10px rgba(255,0,85,0.4)',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {isRecording ? 'Parar e baixar mix' : 'Gravar mix atual'}
+            </button>
+
+            <button
+              onClick={isVideoRecording ? handleStopVideoRecording : handleStartVideoRecording}
+              style={{
+                padding: '8px 16px',
+                borderRadius: '20px',
+                border: '1px solid #0ff',
+                background: isVideoRecording ? '#0ff' : 'transparent',
+                color: 'white',
+                fontSize: '0.8rem',
+                textTransform: 'uppercase',
+                cursor: 'pointer',
+                boxShadow: '0 0 10px rgba(0,255,255,0.4)',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {isVideoRecording ? 'Parar e baixar vídeo' : 'Gravar vídeo & áudio'}
+            </button>
+          </div>
+
 
           {/* Botão Toggle Sidebar (Só aparece se necessário) */}
           <button 
