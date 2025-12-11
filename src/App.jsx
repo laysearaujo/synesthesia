@@ -4,6 +4,13 @@ import { OrbitControls, Line, Stars, Sparkles, Sphere, Torus, Icosahedron, Octah
 import * as THREE from 'three'
 import * as Tone from 'tone'
 
+// --- ESTADO GLOBAL ---
+const players = {}
+const meters = {}
+let availableStems = {}
+const BASE_BPM = 120
+
+// --- COMPONENTES VISUAIS ---
 // --- URL DO BACKEND ---
 const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
   ? 'http://localhost:3001' 
@@ -256,6 +263,12 @@ function MusicPlayer({ isPlaying, onPlayPause, duration, currentTime, onSeek }) 
 
 function App() {
   const [status, setStatus] = useState("idle")
+  const [orbs, setOrbs] = useState([])
+  const [draggedItem, setDraggedItem] = useState(null)
+  const [youtubeUrl, setYoutubeUrl] = useState("") 
+ 
+  const [globalBpm, setGlobalBpm] = useState(BASE_BPM)
+
   const [drawings, setDrawings] = useState([]) 
   const [mode, setMode] = useState('draw') 
   
@@ -268,6 +281,69 @@ function App() {
   const [currentTime, setCurrentTime] = useState(0)
 
   const fileInputRef = useRef(null)
+  const recorderRef = useRef(null)
+  const [isRecording, setIsRecording] = useState(false)
+  const [canvasEl, setCanvasEl] = useState(null)
+  const videoRecorderRef = useRef(null)
+const [isVideoRecording, setIsVideoRecording] = useState(false)
+
+
+const handleStartVideoRecording = async () => {
+  if (!canvasEl) return
+  await Tone.start()
+
+  // stream de vídeo do canvas
+  const videoStream = canvasEl.captureStream(60) // 60fps
+
+  // destino de áudio do Web Audio (Tone)
+  const audioContext = Tone.getContext().rawContext
+  const audioDest = audioContext.createMediaStreamDestination()
+  Tone.Destination.connect(audioDest)
+
+  // junta tracks de vídeo + áudio
+  const mixedStream = new MediaStream([
+    ...videoStream.getVideoTracks(),
+    ...audioDest.stream.getAudioTracks()
+  ])
+
+  const recorder = new MediaRecorder(mixedStream, {
+    mimeType: 'video/webm;codecs=vp9'
+  })
+
+  const chunks = []
+  recorder.ondataavailable = (e) => {
+    if (e.data.size > 0) chunks.push(e.data)
+  }
+
+  recorder.onstop = () => {
+    const blob = new Blob(chunks, { type: 'video/webm' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'synesthesia-visual.webm'
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+    Tone.Destination.disconnect(audioDest)
+  }
+
+  videoRecorderRef.current = recorder
+  recorder.start() // começa a gravar já
+  setIsVideoRecording(true)
+}
+
+
+  useEffect(() => {
+    const recorder = new Tone.Recorder()
+    Tone.Destination.connect(recorder)
+    recorderRef.current = recorder
+
+    return () => {
+      Tone.Destination.disconnect(recorder)
+    }
+  }, [])
+  // Listener de redimensionamento
   const youtubeInputRef = useRef(null)
 
   useEffect(() => {
@@ -306,6 +382,36 @@ function App() {
     formData.append('audio', file)
     processAudioSource(formData, 'separate')
   }
+  const handleStopVideoRecording = () => {
+  if (!videoRecorderRef.current) return
+  videoRecorderRef.current.stop()
+  setIsVideoRecording(false)
+}
+
+
+  const handleStartRecording = async () => {
+    if (!recorderRef.current) return
+    await Tone.start() // garante que o contexto de áudio está ativo
+    recorderRef.current.start()
+    setIsRecording(true)
+  }
+
+  const handleStopRecording = async () => {
+    if (!recorderRef.current) return
+
+    const recording = await recorderRef.current.stop() // Blob de áudio
+    setIsRecording(false)
+
+    const url = URL.createObjectURL(recording)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'synesthesia-mix.webm' // pode trocar para .wav, se preferir
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  }
+
 
   const handleYoutubeUpload = async () => {
     const url = youtubeInputRef.current.value
@@ -386,11 +492,91 @@ function App() {
     }
   }
 
+  const updateMix = (orbList) => {
+  const tempoFactor = globalBpm / BASE_BPM
+
+  orbList.forEach((orb) => {
+    if (players[orb.id]) {
+      const pan = Math.max(-1, Math.min(1, orb.position[0] / 8))
+      const panner = new Tone.Panner(pan).toDestination()
+
+      players[orb.id].disconnect()
+      players[orb.id].connect(panner)
+
+      if (meters[orb.id]) {
+        players[orb.id].connect(meters[orb.id])
+      }
+
+      const volume = (orb.position[2] * 2)
+      players[orb.id].volume.value = Math.min(0, volume)
+
+      // AQUI: tempo local * fator global
+      const finalRate = orb.playbackRate * tempoFactor
+      players[orb.id].playbackRate = finalRate
+    }
+  })
+}
+  
+  const addOrb = (type) => {
+    if (!availableStems[type]) return
+    const newId = `${type}-${Date.now()}`
+    // Posição aleatória menor para telas menores
+    const range = isMobile ? 2 : 4
+    const newOrb = {
+        id: newId, type, scale: 1, 
+        position: [Math.random() * range - (range/2), Math.random() * range - (range/2), 0], 
+        playbackRate: 1
+    }
+    const newOrbs = [...orbs, newOrb]
+    setOrbs(newOrbs)
+    const url = availableStems[type]
+    const p = new Tone.Player(url).toDestination()
+    const m = new Tone.Meter({ smoothing: 0.8 })
+    p.connect(m); p.loop = true; players[newId] = p; meters[newId] = m
+    if (status === 'playing') p.start()
+    updateMix(newOrbs)
+  }
+  
+  const removeOrb = (id) => {
+    if (players[id]) { players[id].stop(); players[id].dispose(); delete players[id]; delete meters[id] }
+    const newOrbs = orbs.filter(o => o.id !== id); setOrbs(newOrbs); updateMix(newOrbs)
+  }
+  
+  const updateOrbScale = (id, newScale) => {
+    const newOrbs = orbs.map(o => {
+      if (o.id === id) {
+        const baseRate = 1 / newScale  // ou qualquer relação que você preferir
+        return { ...o, scale: newScale, playbackRate: baseRate }
+      }
+      return o
+    })
+    setOrbs(newOrbs)
+    updateMix(newOrbs)
+  }
+  
+  const updateOrbPosition = (id, newPosition) => {
+    const newOrbs = orbs.map(o => { if (o.id === id) return { ...o, position: newPosition }; return o }); setOrbs(newOrbs); updateMix(newOrbs)
+  }
+  
+  // Drag logic (Desktop)
+  const handleDragStart = (e, type) => setDraggedItem(type)
+  const handleDragOver = (e) => e.preventDefault()
+  const handleOrbDrop = (e) => {
+    e.preventDefault()
+    if (draggedItem && availableStems[draggedItem]) { addOrb(draggedItem); setDraggedItem(null) }
+  }
+
+  // --- RENDERIZAÇÃO ---
   return (
     <div style={{ width: "100vw", height: "100vh", background: "#050505", cursor: (mode === 'draw' && activeBrush && activeBrush !== 'eraser') ? 'crosshair' : (activeBrush === 'eraser' ? 'alias' : 'auto') }}>
       
-      <Canvas camera={{ position: [0, 0, 15] }}>
-        <color attach="background" args={['#050505']} />
+      {/* Canvas com ajuste de FOV para mobile (câmera mais longe se a tela for estreita) */}
+      <Canvas
+        camera={{ position: [0, 0, isMobile ? 18 : 14], fov: 45 }}
+        onDrop={handleOrbDrop}
+        onDragOver={handleDragOver}
+        onCreated={({ gl }) => setCanvasEl(gl.domElement)}
+      >
         <ambientLight intensity={0.5} />
         <pointLight position={[10, 10, 10]} intensity={1} />
         <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade speed={1} />
@@ -540,6 +726,190 @@ function App() {
         </div>
       )}
 
+      {/* INTERFACE DE JOGO */}
+      {status === "playing" && (
+        <>
+          {/* Header Mobile-Friendly */}
+          <div style={{ position: 'absolute', top: '20px', left: '20px', zIndex: 10, pointerEvents: 'none' }}>
+             <h3 style={{ color: 'white', margin: 0, letterSpacing: '2px', fontSize: isMobile ? '1rem' : '1.2rem' }}>SYNESTHESIA</h3>
+             <p style={{ color: '#666', fontSize: '0.7rem', margin: 0 }}>
+               {isMobile ? "Toque nos ícones para adicionar" : "Arraste ou clique nos ícones"}
+             </p>
+          </div>
+          {/* Botões de gravação (mix + vídeo) */}
+          <div
+            style={{
+              position: 'absolute',
+              top: '20px',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              zIndex: 20,
+              pointerEvents: 'auto',
+              display: 'flex',
+              gap: '10px',
+            }}
+          >
+            <button
+              onClick={isRecording ? handleStopRecording : handleStartRecording}
+              style={{
+                padding: '8px 16px',
+                borderRadius: '20px',
+                border: '1px solid #ff0055',
+                background: isRecording ? '#ff0055' : 'transparent',
+                color: 'white',
+                fontSize: '0.8rem',
+                textTransform: 'uppercase',
+                cursor: 'pointer',
+                boxShadow: '0 0 10px rgba(255,0,85,0.4)',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {isRecording ? 'Parar e baixar mix' : 'Gravar mix atual'}
+            </button>
+
+            <button
+              onClick={isVideoRecording ? handleStopVideoRecording : handleStartVideoRecording}
+              style={{
+                padding: '8px 16px',
+                borderRadius: '20px',
+                border: '1px solid #0ff',
+                background: isVideoRecording ? '#0ff' : 'transparent',
+                color: 'white',
+                fontSize: '0.8rem',
+                textTransform: 'uppercase',
+                cursor: 'pointer',
+                boxShadow: '0 0 10px rgba(0,255,255,0.4)',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {isVideoRecording ? 'Parar e baixar vídeo' : 'Gravar vídeo & áudio'}
+            </button>
+          </div>
+
+
+          {/* Botão Toggle Sidebar (Só aparece se necessário) */}
+          <button 
+            onClick={() => setShowSidebar(!showSidebar)}
+            style={{
+              position: 'absolute', top: '20px', right: '20px', zIndex: 40,
+              background: 'rgba(20,20,20,0.8)', color: 'white', border: '1px solid #444',
+              borderRadius: '50%', width: '40px', height: '40px', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center'
+            }}
+          >
+            {showSidebar ? '✕' : '⚙️'}
+          </button>
+
+          {/* Docker (Barra Inferior) */}
+          <div style={{
+            position: 'absolute', bottom: '30px', left: '50%', transform: 'translateX(-50%)',
+            background: 'rgba(20,20,20,0.9)', padding: '10px 20px', borderRadius: '20px',
+            display: 'flex', gap: isMobile ? '15px' : '20px', zIndex: 30,
+            border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
+            maxWidth: '90vw', overflowX: 'auto'
+          }}>
+            {Object.keys(OrbComponents).map(type => (
+              availableStems[type] && (
+                <div
+                  key={type}
+                  draggable={!isMobile} // Só arrasta no desktop
+                  onDragStart={(e) => handleDragStart(e, type)}
+                  onClick={() => addOrb(type)} // NOVO: Clique funciona no mobile
+                  style={{
+                    minWidth: '45px', width: '45px', height: '45px', borderRadius: '12px',
+                    background: OrbColors[type], display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    cursor: 'pointer', fontSize: '0.6rem', color: 'white', fontWeight: 'bold',
+                    boxShadow: `0 0 10px ${OrbColors[type]}`,
+                    border: '2px solid rgba(255,255,255,0.2)',
+                    userSelect: 'none'
+                  }}
+                >
+                  {OrbNames[type]}
+                </div>
+              )
+            ))}
+          </div>
+
+          {/* Sidebar (Configurações) */}
+          {showSidebar && (
+            <div
+              style={{
+                position: 'absolute',
+                top: isMobile ? '70px' : '20px',
+                right: '20px',
+                background: 'rgba(10,10,10,0.9)',
+                padding: '20px',
+                borderRadius: '15px',
+                maxHeight: '70vh',
+                overflowY: 'auto',
+                zIndex: 30,
+                width: isMobile ? '260px' : '220px',
+                backdropFilter: 'blur(10px)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                boxShadow: '-10px 10px 30px rgba(0,0,0,0.5)',
+              }}
+            >
+              {/* Controle de BPM global */}
+              <div style={{ marginBottom: '15px' }}>
+                <label
+                  style={{
+                    color: '#ccc',
+                    fontSize: '0.7rem',
+                    display: 'block',
+                    marginBottom: '4px',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  BPM global: {globalBpm}
+                </label>
+                <input
+                  type="range"
+                  min="60"
+                  max="180"
+                  step="1"
+                  value={globalBpm}
+                  onChange={(e) => {
+                    const newBpm = parseInt(e.target.value, 10)
+                    setGlobalBpm(newBpm)
+                    updateMix(orbs)
+                  }}
+                  style={{ width: '100%' }}
+                />
+              </div>
+              <h4 style={{ color: '#aaa', margin: '0 0 15px 0', fontSize: '0.8rem', textTransform: 'uppercase' }}>Mistura Ativa</h4>
+              {orbs.length === 0 && <p style={{color: '#444', fontSize: '0.8rem'}}>Vazio. Adicione instrumentos.</p>}
+              
+              {orbs.map(orb => (
+                <div key={orb.id} style={{
+                  background: 'rgba(255,255,255,0.03)', padding: '10px', marginBottom: '10px',
+                  borderRadius: '8px', borderLeft: `3px solid ${OrbColors[orb.type]}`
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <span style={{ color: 'white', fontSize: '0.8rem', fontWeight: 'bold' }}>{OrbNames[orb.type]} {orb.type}</span>
+                    <button onClick={() => removeOrb(orb.id)} style={{
+                        background: 'transparent', border: 'none', color: '#ff4444', 
+                        cursor: 'pointer', fontSize: '1.2rem', padding: '0 5px'
+                      }}>×</button>
+                  </div>
+                  
+                  <div style={{ marginBottom: '8px' }}>
+                    <label style={{ color: '#666', fontSize: '0.65rem', display: 'block' }}>Escala / Tempo</label>
+                    <input type="range" min="0.5" max="2" step="0.1" value={orb.scale}
+                      onChange={(e) => updateOrbScale(orb.id, parseFloat(e.target.value))}
+                      style={{ width: '100%', accentColor: OrbColors[orb.type] }} />
+                  </div>
+
+                  <div>
+                    <label style={{ color: '#666', fontSize: '0.65rem', display: 'block' }}>Posição X / Pan</label>
+                    <input type="range" min="-6" max="6" step="0.5" value={orb.position[0]}
+                      onChange={(e) => updateOrbPosition(orb.id, [parseFloat(e.target.value), orb.position[1], orb.position[2]])}
+                      style={{ width: '100%', accentColor: OrbColors[orb.type] }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
       {status === "playing" && mode === 'draw' && (
         <div style={{ position: 'absolute', top: '20px', left: '30px', color: 'white', pointerEvents: 'none' }}>
           <p style={{ margin: '5px 0 0', fontSize: '0.9rem', opacity: 0.7, fontFamily: 'monospace' }}>
