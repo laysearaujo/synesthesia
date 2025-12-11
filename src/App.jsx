@@ -801,7 +801,7 @@ function App() {
               return (
                 <div key={type}>
                   <div style={{ marginBottom: 2 }}>
-                    {info.icon} {info.name} – fator: {rate.toFixed(2)}x
+                    {info?.icon} {info?.name} – fator: {rate?.toFixed(2)}x
                   </div>
                   <input
                     type="range"
@@ -812,7 +812,7 @@ function App() {
                     onChange={(e) =>
                       handleInstrumentRateChange(type, parseFloat(e.target.value))
                     }
-                    style={{ width: '100%', accentColor: info.color }}
+                    style={{ width: '100%', accentColor: info?.color }}
                   />
                 </div>
               )
