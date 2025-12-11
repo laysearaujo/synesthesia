@@ -851,6 +851,7 @@ function App() {
           {/* Time‑stretch por instrumento */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px' }}>
             {availableInstruments.map((type) => {
+              type = type === 'drums' ? 'drum' : (type === 'vocals' ? 'vocal' : type)
               const info = BRUSHES[type]
               const rate = instrumentRates[type]
               return (
